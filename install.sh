@@ -4,18 +4,26 @@ set -e
 
 echo "🚀 Bridgy Setup Starting..."
 
+# Ensure GH_PAT is set
+if [ -z "$GH_PAT" ]; then
+  echo "❌ Environment variable GH_PAT is not set. Please export it:"
+  echo "   export GH_PAT=your_personal_access_token"
+  exit 1
+fi
+
 INSTALL_DIR="$HOME/bridgy"
 IMAGE_NAME="bridgyv2-app"
+REPO_URL="https://$GH_PAT@github.com/AMac00/bridgy.git"
 
-# 1. Clone or update repo
+# 1. Clone or update repo using token
 if [ ! -d "$INSTALL_DIR" ]; then
   echo "[+] Cloning Bridgy repo..."
-  git clone https://github.com/AMac00/bridgy.git "$INSTALL_DIR"
+  git clone "$REPO_URL" "$INSTALL_DIR"
 else
   echo "[i] Bridgy repo already exists at $INSTALL_DIR"
   echo "[+] Pulling latest changes..."
   cd "$INSTALL_DIR"
-  git pull origin main
+  git pull "https://$GH_PAT@github.com/AMac00/bridgy.git"
 fi
 
 cd "$INSTALL_DIR"
