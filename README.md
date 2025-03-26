@@ -4,6 +4,10 @@
 
 [![Docker Build Status](https://img.shields.io/docker/build/amac00/bridgy-ai?style=flat-square)](https://hub.docker.com/r/amac00/bridgy-ai)
 [![GitHub Stars](https://img.shields.io/github/stars/AMac00/bridgy?style=flat-square)](https://github.com/AMac00/bridgy/stargazers)
+
+[![Docker Build Status](https://img.shields.io/docker/build/amac00/bridgy-ai?style=flat-square)](https://hub.docker.com/r/amac00/bridgy-ai)
+[![GitHub Stars](https://img.shields.io/github/stars/AMac00/bridgy?style=flat-square)](https://github.com/AMac00/bridgy)
+
 [![Python Version](https://img.shields.io/badge/python-3.10-blue.svg)](https://www.python.org/downloads/)
 [![CUDA Support](https://img.shields.io/badge/CUDA-12.x-green.svg)](https://developer.nvidia.com/cuda-downloads)
 [![License](https://img.shields.io/badge/License-TBD-yellow.svg)](#license)
