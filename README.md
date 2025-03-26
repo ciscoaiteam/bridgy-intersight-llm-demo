@@ -1,16 +1,12 @@
 # Cisco Bridgy AI Assistant
 
 ![Cisco Intersight Logo](https://storage.googleapis.com/blogs-images-new/ciscoblogs/1/2021/09/Intersight-Icon.png)
-
-[![Docker Build Status](https://img.shields.io/docker/build/amac00/bridgy-ai?style=flat-square)](https://hub.docker.com/r/amac00/bridgy-ai)
-[![GitHub Stars](https://img.shields.io/github/stars/AMac00/bridgy?style=flat-square)](https://github.com/AMac00/bridgy/stargazers)
-
-[![Docker Build Status](https://img.shields.io/docker/build/amac00/bridgy-ai?style=flat-square)](https://hub.docker.com/r/amac00/bridgy-ai)
-[![GitHub Stars](https://img.shields.io/github/stars/AMac00/bridgy?style=flat-square)](https://github.com/AMac00/bridgy)
-
+[![Docker Build](https://img.shields.io/badge/docker-build-green?style=flat-square&logo=docker)](https://hub.docker.com/r/amac00/bridgy-ai)
 [![Python Version](https://img.shields.io/badge/python-3.10-blue.svg)](https://www.python.org/downloads/)
 [![CUDA Support](https://img.shields.io/badge/CUDA-12.x-green.svg)](https://developer.nvidia.com/cuda-downloads)
 [![License](https://img.shields.io/badge/License-TBD-yellow.svg)](#license)
+
+
 
 ## 🚀 Overview
 
