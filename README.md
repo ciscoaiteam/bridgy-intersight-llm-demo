@@ -3,7 +3,7 @@
 ![Cisco Intersight Logo](https://storage.googleapis.com/blogs-images-new/ciscoblogs/1/2021/09/Intersight-Icon.png)
 
 [![Docker Build Status](https://img.shields.io/docker/build/amac00/bridgy-ai.svg)](https://hub.docker.com/r/amac00/bridgy-ai)
-[![GitHub stars](https://img.shields.io/github/stars/yourusername/cisco-bridgy.svg)](https://github.com/yourusername/cisco-bridgy/stargazers)
+[![GitHub stars](https://img.shields.io/github/stars/amac000/cisco-bridgy.svg)](https://github.com/amaco00/cisco-bridgy/stargazers)
 [![Python Version](https://img.shields.io/badge/python-3.10-blue.svg)](https://www.python.org/downloads/)
 [![CUDA Support](https://img.shields.io/badge/CUDA-12.x-green.svg)](https://developer.nvidia.com/cuda-downloads)
 [![License](https://img.shields.io/badge/License-TBD-yellow.svg)](#license)
