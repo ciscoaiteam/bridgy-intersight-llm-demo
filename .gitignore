@@ -1,0 +1,7 @@
+# Virtual environments
+./venv
+venv/
+# Local Environments
+.env
+# Zip file of the old version
+*.zip

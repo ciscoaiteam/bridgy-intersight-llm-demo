@@ -1,0 +1,16 @@
+
+[server]
+headless = true
+address = "0.0.0.0"
+port = 8080
+enableWebsocketCompression = false
+
+[logger]
+level = "info"
+
+[theme]
+primaryColor = "#049fd9"  # Cisco blue
+backgroundColor = "#ffffff"
+secondaryBackgroundColor = "#f7f7f7"
+textColor = "#262626"
+font = "sans serif"
