@@ -37,23 +37,34 @@ if [ -z "$LANGSMITH_API_KEY" ]; then
   exit 1
 fi
 
-# 3. Prompt for Intersight API Key (required)
-echo "🔎 Enter your Intersight API key (required):"
-read -r INTERSIGHT_API_KEY
-if [ -z "$INTERSIGHT_API_KEY" ]; then
-  echo "❌ Intersight API Key is required. Exiting."
+# 3. Prompt for Intersight API Key ID
+echo
+echo "🔎 Enter your Intersight API Key ID (required):"
+read -r INTERSIGHT_API_KEY_ID
+if [ -z "$INTERSIGHT_API_KEY_ID" ]; then
+  echo "❌ Intersight API Key ID is required. Exiting."
   exit 1
 fi
 
-# 4. Write .env
-cat > "$INSTALL_DIR/.env" <<EOF
+# 3.2 Prompt for PEM Key (multiline)
+echo
+echo "🔐 Paste your full Intersight PEM Private Key below (end with CTRL+D):"
+INTERSIGHT_PEM_KEY=$(</dev/stdin)
+if [ -z "$INTERSIGHT_PEM_KEY" ]; then
+  echo "❌ Intersight PEM Private Key is required. Exiting."
+  exit 1
+fi
+
+# 4. Write .env file
+cat > "$ENV_FILE" <<EOF
 # LangSmith Configuration
 LANGSMITH_ENDPOINT="https://api.smith.langchain.com"
 LANGSMITH_API_KEY="$LANGSMITH_API_KEY"
 LANGSMITH_PROJECT="bridgyv2"
 
-# Intersight (Required)
-INTERSIGHT_API_KEY="$INTERSIGHT_API_KEY"
+# Intersight
+INTERSIGHT_API_KEY_ID="$INTERSIGHT_API_KEY_ID"
+$INTERSIGHT_PEM_KEY="$INTERSIGHT_PEM_KEY"
 EOF
 
 echo "[+] .env file created at $INSTALL_DIR/.env"
