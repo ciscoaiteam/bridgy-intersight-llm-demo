@@ -1,155 +1,191 @@
-
 # Cisco Bridgy AI Assistant
 
-A Streamlit-based application that uses LLMs to answer questions about Cisco infrastructure, specializing in Intersight, AI Pods, and general Cisco knowledge.
+![Cisco Intersight Logo](https://storage.googleapis.com/blogs-images-new/ciscoblogs/1/2021/09/Intersight-Icon.png)
 
-## Overview
+[![Docker Build Status](https://img.shields.io/docker/build/yourusername/bridgy-ai.svg)](https://hub.docker.com/r/yourusername/bridgy-ai)
+[![GitHub stars](https://img.shields.io/github/stars/yourusername/cisco-bridgy.svg)](https://github.com/yourusername/cisco-bridgy/stargazers)
+[![Python Version](https://img.shields.io/badge/python-3.10-blue.svg)](https://www.python.org/downloads/)
+[![CUDA Support](https://img.shields.io/badge/CUDA-12.x-green.svg)](https://developer.nvidia.com/cuda-downloads)
+[![License](https://img.shields.io/badge/License-TBD-yellow.svg)](#license)
 
-Cisco Bridgy is an AI assistant that routes queries to specialized experts:
+## 🚀 Overview
 
-- **Intersight Expert**: Answers questions about server inventory, status, and infrastructure management
-- **AI Pods Expert**: Provides information about Cisco AI Pods, their documentation, and LLM hardware requirements
-- **General Expert**: Handles general Cisco knowledge questions
+Cisco Bridgy is an advanced AI assistant designed to provide specialized expertise in Cisco infrastructure, focusing on Intersight, AI Pods, and general Cisco knowledge. Utilizing a sophisticated "Mix of Experts" model, the assistant routes queries to specialized knowledge domains for precise and context-aware responses.
 
-## Setup Instructions for Linux
+## ✨ Key Features
 
-### Prerequisites
+- **Multi-Expert Routing**:
+  - Intersight Expert: Server inventory and infrastructure management
+  - AI Pods Expert: AI infrastructure and LLM hardware insights
+  - General Cisco Knowledge Expert
 
-- Docker
-- Nvidia GPU
-- Internet connectivity
-- Intersight API key (for Intersight-related queries)
-- LangSmith Key (Used for troubleshooting)
+- **Advanced Technology Stack**:
+  - Retrieval-Augmented Generation (RAG) with FAISS-GPU
+  - Embedding Model: [Specific Embedding Model Name]
+  - Inferencing via Ollama with Gemma2 (9B model)
+  - LangChain Integration
+  - Streamlit-based Web Interface
 
-### Application Information
+## 🖥️ System Requirements
 
-- Tested on cuDNN 9+ for FAISS GPU-Support 
-- Tested on CUDA 12.
-- Ollama Service 
-  - Gamma2 (9B model is currently loaded)
+### Hardware
+- **GPU**: Nvidia GPU with minimum 18 GB VRAM
+- **CUDA**: Version 12.x
+- **cuDNN**: Version 9+
 
-### Installation Steps
+### Software Prerequisites
+- Python 3.10
+- Internet Connectivity
+- Intersight API Key
+- LangSmith Key (Optional, for troubleshooting)
 
-You have a few options to run this applications.  
-1. Run Install Script ( Fastest Method )
-2. Run the Code and build your own container
-3. Pull the base code and use it without a container
+## 🛠️ Installation Methods
 
-Once the streamlit service is up and running you will be able to access it at 
-## http://ServerIP:8443
+### Quick DCloud Installation
 
+For the fastest setup, especially in Cisco DCloud environments, use the `install.sh` script. This method provides a pre-configured, ready-to-deploy solution with minimal configuration required.
 
-Follow the directions depending on what you would like to run. 
+### 1. Prebuilt Container Installation (Recommended)
 
-### 1 Install Script Run Process
+```bash
+# Download the install script
+wget https://raw.githubusercontent.com/AMac00/bridgy/main/install.sh
 
-1. Download the install.sh to the local linux docker host
-   ./install.sh ( if its not excutable run :   chmod -X install.x )
+# Make the script executable
+chmod +x install.sh
 
-### 2. Build your own Container
+# Run the installation script
+./install.sh
+```
 
-1. Clone the Repo to the local directory
-2. Populate the local .env file *(It will be copied into the container)
-3. Build the container ( docker build --no-cache -t bridgyv2-app . )
-4. Bring up the container ( docker run --rm -it --gpus all -p 8443:8443 bridgyv2-app )
+### 2. Build Your Own Container
 
-You might want to do this if you want to switch out the embedding model or the core model uses. 
+For custom configurations or latest source code:
 
-### 3. Use Base Code outside of a container 
+```bash
+# Clone the repository
+git clone https://github.com/AMac00/bridgy.git
+cd bridgy
 
-### Code Install Process 
+# Populate the local .env file with your credentials
+# (Create .env file as described in Configuration section)
 
-2. **Install dependencies**
-   ```bash
-   # Install required system packages
-   sudo apt-get update
-   sudo apt-get install -y python3-pip python3-dev build-essential libssl-dev zlib1g-dev libjpeg-dev libtiff-dev
-   
-   # Install application dependencies
-   pip install faiss-cpu langchain-community langchain openai python-dotenv streamlit tiktoken intersight trafilatura langchain-openai pillow pypdf
-   ```
+# Build the Docker container
+docker build --no-cache -t bridgyv2-app .
 
-3. **Set up environment variables**
+# Run the container
+docker run --rm -it --gpus all -p 8443:8443 bridgyv2-app
+```
 
-   Create a `.env` file in the root directory with the following variables:
+### 3. Local Installation (Without Container)
 
-   ```
-   LANGSMITH_API_KEY=your_langsmith_api_key  # Optional, for tracing
-   LANGSMITH_PROJECT=bridgyv2  # Optional, for tracing
-   INTERSIGHT_API_KEY=your_intersight_api_key_id  # Required for Intersight functionality
-   ```
+For development or environments without Docker:
 
-4. **Configure Intersight API credentials**
+#### Prerequisites
+- Python 3.10
+- Nvidia GPU with 18GB+ VRAM
+- CUDA 12.x
+- cuDNN 9+
 
-   If you plan to use the Intersight Expert functionality, you'll need:
-   
-   - Add your Intersight API Key ID to the `.env` file as shown above
-   - Place your Intersight Secret Key in the root directory as `intersight_secret_key.pem`
-   
-   You can generate these credentials from your Intersight account under Settings > API Keys.
+#### Installation Steps
 
-## Running the Application
+```bash
+# Update system packages
+sudo apt-get update
+sudo apt-get install -y python3-pip python3-dev build-essential libssl-dev zlib1g-dev libjpeg-dev libtiff-dev
 
-1. **Start the Streamlit application**
+# Clone the repository
+git clone https://github.com/AMac00/bridgy.git
+cd bridgy
 
-   ```bash
-   streamlit run --server.fileWatcherType none main.py --server.port 8443
-   ```
+# Create and activate a virtual environment (recommended)
+python3 -m venv venv
+source venv/bin/activate
 
-2. **Access the application**
+# Install system dependencies
+sudo apt-get install -y python3-pip python3-dev build-essential libssl-dev zlib1g-dev libjpeg-dev libtiff-dev
 
-   Open a web browser and navigate to:
-   - `http://0.0.0.0:8443` (if accessing locally)
-   - `http://your_server_ip:8443` (if accessing from another machine)
+# Install Python dependencies
+pip install -r requirements.txt
 
-## Project Structure
+# Set up environment variables
+cp .env.example .env
+# Edit .env file with your specific configurations
+
+# Run the application
+streamlit run --server.fileWatcherType none main.py --server.port 8443
+```
+
+### Post-Installation Access
+
+After successful installation via any method, access the application at:
+- `http://localhost:8443` (local access)
+- `http://your_server_ip:8443` (network access)
+
+## 📋 Configuration
+
+Create a `.env` file with the following variables:
+
+```
+LANGSMITH_API_KEY=your_langsmith_api_key
+LANGSMITH_PROJECT=bridgyv2
+INTERSIGHT_API_KEY=your_intersight_api_key_id
+```
+
+## 🔍 Verification
+
+Verify your installation by checking:
+1. GPU compatibility
+2. CUDA and cuDNN versions
+3. Successful dependency installations
+4. Proper API key configurations
+
+```bash
+# Verify Python and torch installation
+python3 -c "import torch; print(torch.cuda.is_available())"
+```
+
+## 🛡️ Troubleshooting
+
+### Common Issues
+- **AI Pod Agent Errors**: 
+  - Typically related to cuDNN or Torch compatibility
+  - Validate installation via Python torch import
+- Ensure all dependencies are correctly installed
+- Check GPU drivers and CUDA configuration
+
+## 📂 Project Structure
 
 ```
 ├── .streamlit/                # Streamlit configuration
 ├── experts/                   # Expert modules
-│   ├── ai_pods_expert.py      # AI Pods expert implementation
-│   ├── general_expert.py      # General Cisco knowledge expert
-│   ├── intersight_expert.py   # Intersight expert implementation
-│   └── router.py              # Expert routing logic
 ├── pdf/                       # Documentation PDFs
 ├── tools/                     # Utility tools
-│   ├── intersight_api.py      # Intersight API interface
-│   └── pdf_loader.py          # PDF document loader
 ├── utils/                     # Utility functions
-│   ├── avatar_manager.py      # Chat avatar management
-│   └── styling.py             # UI styling utilities
 ├── config.py                  # Application configuration
-├── main.py                    # Main application entry point
-└── .env                       # Environment variables (create this)
+└── main.py                    # Main application entry point
 ```
 
-## Usage
+## 👥 Contributors
 
-1. After starting the application, you'll see the Cisco Bridgy AI Assistant interface.
-2. Type your question in the chat input at the bottom of the screen.
-3. The assistant will automatically route your question to the appropriate expert and display the response.
-4. Questions about your Intersight environment, AI Pods, or general Cisco knowledge are all supported.
+- [@amac00](https://github.com/amac00)
+- [@noahsdonaldson](https://github.com/noahsdonaldson)
 
-## Troubleshooting
+## 💡 Contribute
 
-- **Port access issues**: If you can't access the application from another machine, check your firewall settings to ensure port 5000 is open.
-- **API connection errors**: Ensure your OpenAI API key and Intersight credentials are correctly configured.
-- **Missing dependencies**: Run `pip install -r requirements.txt` to ensure all required packages are installed.
+Interested in improving Cisco Bridgy? We welcome contributions!
+- Report issues on our GitHub repository
+- Submit pull requests with improvements
+- Reach out to contributors with suggestions or ideas
 
-## Environment Variables
+## 📄 License
 
-| Variable | Description | Required |
-|----------|-------------|----------|
-| OPENAI_API_KEY | Your OpenAI API key | Yes |
-| LANGSMITH_API_KEY | LangSmith API key for tracing | No |
-| LANGSMITH_PROJECT | LangSmith project name | No |
-| LANGSMITH_TRACING | Enable/disable tracing (true/false) | No |
-| LANGSMITH_ENDPOINT | LangSmith API endpoint | No |
+License details to be determined. 
 
-## License
+## 🔗 External Resources
 
-[Include license information here]
+- [Intersight API Documentation](https://intersight.com/apidocs/introduction/apidocs/an/)
 
-## Contributors
+---
 
-[List contributors here]
+**Note**: This is a technical demonstration project. Features and functionality may change rapidly.
