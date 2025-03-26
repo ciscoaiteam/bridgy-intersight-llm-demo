@@ -47,9 +47,39 @@ For the fastest setup, especially in Cisco DCloud environments, use the `install
 
 ### 1. Prebuilt Container Installation (Recommended)
 
+Before installation, generate a GitHub **Personal Access Token (PAT)** with the following scopes:
+
+- `repo` – for private repository access  
+- `read:packages` – for downloading Docker containers from GitHub Container Registry
+
+#### ✅ Generate Your PAT:
+1. Visit: [GitHub PAT Settings](https://github.com/settings/tokens?type=classic)
+2. Click **"Generate new token (classic)"**
+3. Select the following scopes:
+   - `repo`
+   - `read:packages`
+4. Click **Generate token** and copy the token somewhere safe.
+
+> ⚠️ Treat this token like a password. Keep it secure.
+
+---
+
+#### 🐳 Docker Authentication (one-time setup)
+
 ```bash
-# Download the install script
-wget https://raw.githubusercontent.com/AMac00/bridgy/main/install.sh
+echo YOUR_GITHUB_PAT | docker login ghcr.io -u YOUR_GITHUB_USERNAME --password-stdin
+```
+
+---
+
+#### 📦 Download and Install
+
+```bash
+# Export your GitHub PAT (replace with your actual token or use a secure method to load it)
+export GH_PAT=your_token_here
+
+# Download the install script with authentication
+wget --header="Authorization: token $GH_PAT" https://raw.githubusercontent.com/AMac00/bridgy/main/install.sh
 
 # Make the script executable
 chmod +x install.sh
@@ -57,6 +87,9 @@ chmod +x install.sh
 # Run the installation script
 ./install.sh
 ```
+
+
+
 
 ### 2. Build Your Own Container
 
