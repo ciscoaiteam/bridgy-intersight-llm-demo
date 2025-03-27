@@ -41,35 +41,45 @@ class IntersightClientTool:
             if not api_key_id:
                 raise Exception("Intersight API key ID not found in environment variables")
 
-            api_pem = os.getenv("INTERSIGHT_PEM_KEY")
+            # Read PEM key from file
+            # Primary and fallback PEM file paths
+            primary_pem_path = "/config/intersight.pem"
+            fallback_pem_path = "./intersight.pem"  # Change this if needed
+            pem_path = "/config/intersight.pem"
 
-            if not api_pem:
-                raise Exception("Intersight PEM Key not found in environment variables")
+            # Use fallback if primary doesn't exist
+            if os.path.exists(primary_pem_path):
+                pem_path = primary_pem_path
+                print(f"[INFO] Using PEM file at: {pem_path}")
+            elif os.path.exists(fallback_pem_path):
+                pem_path = fallback_pem_path
+                print(f"[INFO] Fallback Dev PEM file used: {pem_path}")
+            else:
+                pem_path = None
+                print("[ERROR] No PEM file found in either location!")
+
+            with open(pem_path, 'r') as pem_file:
+                private_key_content = pem_file.read().strip()
 
             logger.debug(f"Intersight API key ID: {api_key_id}")
-            logger.debug("Intersight API PEM ID: %s", api_pem)
-            # # Use the existing PEM file directly
-            # key_path = "intersight_secret_key.pem"
-            #
-            # if not os.path.isfile(key_path):
-            #     raise Exception(f"PEM file not found at {key_path}")
-            #
-            # logger.info(f"Using PEM file: {key_path}")
-            #
-            # # Create a temporary file with the proper formatting that the library can read
-            # with open(key_path, 'r') as original_key_file:
-            #     private_key_content = original_key_file.read().strip()
-            #
-            # with tempfile.NamedTemporaryFile(mode='w', delete=False) as temp_file:
-            #     temp_key_path = temp_file.name
-            #     temp_file.write(private_key_content)
-                
+            logger.debug(f"Loaded PEM file from: {pem_path}")
+
+            # Write to a temporary file (intersight SDK requires a file path)
+            with tempfile.NamedTemporaryFile(mode='w', delete=False) as temp_file:
+                temp_key_path = temp_file.name
+                temp_file.write(private_key_content)
+                logger.debug(f"Created temporary PEM file at: {temp_key_path}")
+
+
+            logger.debug(f"Intersight API key ID: {api_key_id}")
+            logger.debug("Intersight API PEM ID: %s", private_key_content)
+
             # Configure API key authentication with the temporary key file
             self.configuration = intersight.configuration.Configuration(
                 host="https://intersight.com",
                 signing_info=intersight.signing.HttpSigningConfiguration(
                     key_id=api_key_id,
-                    private_key_path=api_pem,
+                    private_key_path=temp_key_path,
                     signing_scheme=intersight.signing.SCHEME_HS2019,
                     signing_algorithm=intersight.signing.ALGORITHM_ECDSA_MODE_FIPS_186_3,
                     hash_algorithm=intersight.signing.HASH_SHA256,

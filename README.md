@@ -36,59 +36,28 @@ Cisco Bridgy is an advanced AI assistant designed to provide specialized experti
 ### Software Prerequisites
 - Python 3.10
 - Internet Connectivity
-- Intersight API Key
+- Intersight API Key & PEM 
 - LangSmith Key (Optional, for troubleshooting)
 
 ## 🛠️ Installation Methods
 
 ### Quick DCloud Installation
 
-For the fastest setup, especially in Cisco DCloud environments, use the `install.sh` script. This method provides a pre-configured, ready-to-deploy solution with minimal configuration required.
+For the fastest setup, especially in Cisco DCloud environments, use the `docker_run.sh` script. This method provides a pre-configured, ready-to-deploy solution with minimal configuration required.
 
 ### 1. Prebuilt Container Installation (Recommended)
 
-Before installation, generate a GitHub **Personal Access Token (PAT)** with the following scopes:
-
-- `repo` – for private repository access  
-- `read:packages` – for downloading Docker containers from GitHub Container Registry
-
-#### ✅ Generate Your PAT:
-1. Visit: [GitHub PAT Settings](https://github.com/settings/tokens?type=classic)
-2. Click **"Generate new token (classic)"**
-3. Select the following scopes:
-   - `repo`
-   - `read:packages`
-4. Click **Generate token** and copy the token somewhere safe.
-
-> ⚠️ Treat this token like a password. Keep it secure.
-
----
-
-#### 🐳 Docker Authentication (one-time setup)
-
-```bash
-echo YOUR_GITHUB_PAT | docker login ghcr.io -u YOUR_GITHUB_USERNAME --password-stdin
+- Download the docker_run.sh file from the root of the repo. 
 ```
-
----
-
-#### 📦 Download and Install
-
-```bash
-# Export your GitHub PAT (replace with your actual token or use a secure method to load it)
-export GH_PAT=your_token_here
-
-# Download the install script with authentication
-wget --header="Authorization: token $GH_PAT" https://raw.githubusercontent.com/AMac00/bridgy/main/install.sh
+wget ###E
 
 # Make the script executable
-chmod +x install.sh
+chmod +x docker_run.sh
 
 # Run the installation script
-./install.sh
+./docker_run.sh
 ```
-
-
+Notes:  Update the new .env and PEM files in the config folder. These will be mounted and used by the container. 
 
 
 ### 2. Build Your Own Container
@@ -98,17 +67,13 @@ For custom configurations or latest source code:
 ```bash
 # Clone the repository
 git clone https://github.com/AMac00/bridgy.git
-cd bridgy
+
+#Run local_build_install.sh
+./local_build_install.sh
 
 # Populate the local .env file with your credentials
 # (Create .env file as described in Configuration section)
 
-# Build the Docker container
-docker build --no-cache -t bridgyv2-app .
-
-# Run the container
-docker run --rm -it --gpus all -p 8443:8443 bridgyv2-app
-```
 
 ### 3. Local Installation (Without Container)
 
@@ -144,6 +109,8 @@ pip install -r requirements.txt
 # Set up environment variables
 cp .env.example .env
 # Edit .env file with your specific configurations
+
+# You will also need to update the Intersight PEM file
 
 # Run the application
 streamlit run --server.fileWatcherType none main.py --server.port 8443
@@ -202,7 +169,8 @@ python3 -c "import torch; print(torch.cuda.is_available())"
 ## 👥 Contributors
 
 - [@amac00](https://github.com/amac00)
-- [@noahsdonaldson](https://github.com/noahsdonaldson)
+- [@mpduarte](https://github.com/mpduarte)
+
 
 ## 💡 Contribute
 
@@ -222,3 +190,22 @@ License details to be determined.
 ---
 
 **Note**: This is a technical demonstration project. Features and functionality may change rapidly.
+
+
+## Changing Models
+
+You have two models running in this demo. 
+- Foundational Model 
+- Embedding Model 
+
+To change the Foundational Model you will need to do the following.
+1. Pull the image via updating the local_build_install.sh with the new model
+2. Update all the expert .py's with the new model name. 
+```        
+        self.llm = OllamaLLM(
+            model="gemma2",  # Using local gemma2 model
+            base_url="http://localhost:11434",
+            temperature=0
+        )
+```
+3. 

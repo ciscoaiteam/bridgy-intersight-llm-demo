@@ -1,75 +1,70 @@
 #!/bin/bash
-
+## This file is used to build a container from the ground up locally. NOT to use the published containers.
 set -e
 
 echo "🚀 Bridgy Setup Starting..."
 
-# Ensure GH_PAT is set
-if [ -z "$GH_PAT" ]; then
-  echo "❌ Environment variable GH_PAT is not set. Please export it:"
-  echo "   export GH_PAT=your_personal_access_token"
-  exit 1
-fi
 
-INSTALL_DIR="$HOME/bridgy"
+INSTALL_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+CONFIG_DIR="$INSTALL_DIR/config"
+ENV_FILE="$CONFIG_DIR/.env"
+PEM_FILE="$CONFIG_DIR/intersight.pem"
 IMAGE_NAME="bridgyv2-app"
 REPO_URL="https://$GH_PAT@github.com/AMac00/bridgy.git"
 
+
 # 1. Clone or update repo using token
-if [ ! -d "$INSTALL_DIR" ]; then
+if [ ! -d "$INSTALL_DIR/.git" ]; then
   echo "[+] Cloning Bridgy repo..."
   git clone "$REPO_URL" "$INSTALL_DIR"
 else
   echo "[i] Bridgy repo already exists at $INSTALL_DIR"
   echo "[+] Pulling latest changes..."
   cd "$INSTALL_DIR"
-  git pull "https://$GH_PAT@github.com/AMac00/bridgy.git"
+  git pull "$REPO_URL"
 fi
 
 cd "$INSTALL_DIR"
 
-# 2. Prompt for LangSmith API Key (required)
-echo
-echo "🔐 Enter your LangSmith API key (required):"
-read -r LANGSMITH_API_KEY
-if [ -z "$LANGSMITH_API_KEY" ]; then
-  echo "❌ LangSmith API Key is required. Exiting."
-  exit 1
-fi
+# 2. Create config directory
+mkdir -p "$CONFIG_DIR"
 
-# 3. Prompt for Intersight API Key ID
-echo
-echo "🔎 Enter your Intersight API Key ID (required):"
-read -r INTERSIGHT_API_KEY_ID
-if [ -z "$INTERSIGHT_API_KEY_ID" ]; then
-  echo "❌ Intersight API Key ID is required. Exiting."
-  exit 1
-fi
-
-# 3.2 Prompt for PEM Key (multiline)
-echo
-echo "🔐 Paste your full Intersight PEM Private Key below (end with CTRL+D):"
-INTERSIGHT_PEM_KEY=$(</dev/stdin)
-if [ -z "$INTERSIGHT_PEM_KEY" ]; then
-  echo "❌ Intersight PEM Private Key is required. Exiting."
-  exit 1
-fi
-
-# 4. Write .env file
-cat > "$ENV_FILE" <<EOF
+# 3. Create .env template
+if [ ! -f "$ENV_FILE" ]; then
+  cat > "$ENV_FILE" <<EOF
 # LangSmith Configuration
 LANGSMITH_ENDPOINT="https://api.smith.langchain.com"
-LANGSMITH_API_KEY="$LANGSMITH_API_KEY"
+LANGSMITH_API_KEY=your_langsmith_api_key_here
 LANGSMITH_PROJECT="bridgyv2"
 
-# Intersight
-INTERSIGHT_API_KEY_ID="$INTERSIGHT_API_KEY_ID"
-$INTERSIGHT_PEM_KEY="$INTERSIGHT_PEM_KEY"
+# Intersight Configuration
+INTERSIGHT_API_KEY=your_intersight_api_key_id_here
 EOF
+  echo "[+] .env template created at $ENV_FILE"
+else
+  echo "[i] .env file already exists at $ENV_FILE"
+fi
 
-echo "[+] .env file created at $INSTALL_DIR/.env"
+# 4. Create PEM file template
+if [ ! -f "$PEM_FILE" ]; then
+  cat > "$PEM_FILE" <<EOF
+-----BEGIN RSA PRIVATE KEY-----
+Paste your Intersight PEM key here
+-----END RSA PRIVATE KEY-----
+EOF
+  echo "[+] PEM template created at $PEM_FILE"
+else
+  echo "[i] PEM file already exists at $PEM_FILE"
+fi
 
-# 5. Check if Docker image exists
+# 5. Prompt user to edit the files
+echo
+echo "✏️  Please edit the following files and add your credentials:"
+echo "   $ENV_FILE"
+echo "   $PEM_FILE"
+read -p "🔄 Press [Enter] to continue after editing..."
+
+# 6. Build Docker image
 if docker image inspect "$IMAGE_NAME" >/dev/null 2>&1; then
   echo "[i] Docker image '$IMAGE_NAME' already exists."
   read -p "🔁 Rebuild the image anyway? (y/N): " REBUILD
@@ -84,11 +79,11 @@ else
   docker build -t "$IMAGE_NAME" .
 fi
 
-# 6. Add alias to shell config
+# 7. Add alias to shell config
 SHELL_RC="$HOME/.bashrc"
 [ -n "$ZSH_VERSION" ] && SHELL_RC="$HOME/.zshrc"
 
-ALIAS_CMD="alias bridgy-start='docker run --rm -it --gpus all --env-file \$HOME/bridgy/.env -p 8443:8443 $IMAGE_NAME'"
+ALIAS_CMD="alias bridgy-start='docker run --rm -it --gpus all -v $CONFIG_DIR:/config --env-file /config/.env -p 8443:8443 $IMAGE_NAME'"
 if ! grep -Fq "alias bridgy-start=" "$SHELL_RC"; then
   echo "$ALIAS_CMD" >> "$SHELL_RC"
   echo "[+] Added 'bridgy-start' alias to $SHELL_RC"

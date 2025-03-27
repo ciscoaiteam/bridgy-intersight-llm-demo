@@ -1,62 +1,52 @@
 #!/bin/bash
-
+# The start script to deploy the service from the Repo container.
+# Fill out the .env and PEM files before running.
 set -e
 
 echo "🚀 Bridgy Setup Starting..."
 
-INSTALL_DIR="$HOME/bridgy"
-ENV_FILE="$INSTALL_DIR/.env"
+INSTALL_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+CONFIG_DIR="$INSTALL_DIR/config"
+ENV_FILE="$CONFIG_DIR/.env"
+PEM_FILE="$CONFIG_DIR/intersight.pem"
 IMAGE_NAME="ghcr.io/amac00/bridgyv2-app:latest"
 
-# 1. Ensure GH_PAT is set
-if [ -z "$GH_PAT" ]; then
-  echo "❌ Environment variable GH_PAT is not set. Please export it:"
-  echo "   export GH_PAT=your_personal_access_token"
-  exit 1
-fi
+mkdir -p "$CONFIG_DIR"
 
-mkdir -p "$INSTALL_DIR"
-
-# 2. Prompt for LangSmith API Key (required)
-echo
-echo "🔐 Enter your LangSmith API key (required):"
-read -r LANGSMITH_API_KEY
-if [ -z "$LANGSMITH_API_KEY" ]; then
-  echo "❌ LangSmith API Key is required. Exiting."
-  exit 1
-fi
-
-# 3. Prompt for Intersight API Key ID
-echo
-echo "🔎 Enter your Intersight API Key ID (required):"
-read -r INTERSIGHT_API_KEY_ID
-if [ -z "$INTERSIGHT_API_KEY_ID" ]; then
-  echo "❌ Intersight API Key ID is required. Exiting."
-  exit 1
-fi
-
-# 3.2 Prompt for PEM Key (multiline)
-echo
-echo "🔐 Paste your full Intersight PEM Private Key below (end with CTRL+D):"
-INTERSIGHT_PEM_KEY=$(</dev/stdin)
-if [ -z "$INTERSIGHT_PEM_KEY" ]; then
-  echo "❌ Intersight PEM Private Key is required. Exiting."
-  exit 1
-fi
-
-# 4. Write .env file
-cat > "$ENV_FILE" <<EOF
+# 2. Create .env template if missing
+if [ ! -f "$ENV_FILE" ]; then
+  cat > "$ENV_FILE" <<EOF
 # LangSmith Configuration
 LANGSMITH_ENDPOINT="https://api.smith.langchain.com"
-LANGSMITH_API_KEY="$LANGSMITH_API_KEY"
+LANGSMITH_API_KEY=your_langsmith_api_key_here
 LANGSMITH_PROJECT="bridgyv2"
 
-# Intersight
-INTERSIGHT_API_KEY_ID="$INTERSIGHT_API_KEY_ID"
-$INTERSIGHT_PEM_KEY="$INTERSIGHT_PEM_KEY"
+# Intersight Configuration
+INTERSIGHT_API_KEY=your_intersight_api_key_id_here
 EOF
+  echo "[+] .env template created at $ENV_FILE"
+else
+  echo "[i] .env file already exists at $ENV_FILE"
+fi
 
-echo "[+] .env file created at $ENV_FILE"
+# 3. Create PEM file if missing
+if [ ! -f "$PEM_FILE" ]; then
+  cat > "$PEM_FILE" <<EOF
+-----BEGIN RSA PRIVATE KEY-----
+Paste your PEM-formatted key here
+-----END RSA PRIVATE KEY-----
+EOF
+  echo "[+] PEM template created at $PEM_FILE"
+else
+  echo "[i] PEM file already exists at $PEM_FILE"
+fi
+
+# 4. Prompt user to edit the files
+echo
+echo "✏️  Please edit the following files and fill in your credentials:"
+echo "   $ENV_FILE"
+echo "   $PEM_FILE"
+read -p "🔄 Press [Enter] to continue after editing the files..."
 
 # 5. Docker login and pull image
 echo
@@ -70,7 +60,7 @@ docker pull "$IMAGE_NAME"
 SHELL_RC="$HOME/.bashrc"
 [ -n "$ZSH_VERSION" ] && SHELL_RC="$HOME/.zshrc"
 
-ALIAS_CMD="alias bridgy-start='docker run --rm -it --gpus all --env-file \$HOME/bridgy/.env -p 8443:8443 $IMAGE_NAME'"
+ALIAS_CMD="alias bridgy-start='docker run --rm -it --gpus all -v $CONFIG_DIR:/config --env-file /config/.env -p 8443:8443 $IMAGE_NAME'"
 if ! grep -Fq "alias bridgy-start=" "$SHELL_RC"; then
   echo "$ALIAS_CMD" >> "$SHELL_RC"
   echo "[+] Added 'bridgy-start' alias to $SHELL_RC"
