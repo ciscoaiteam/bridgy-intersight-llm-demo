@@ -49,7 +49,14 @@ For the fastest setup, especially in Cisco DCloud environments, use the `docker_
 
 - Download the docker_run.sh file from the root of the repo. 
 ```
-wget ###E
+#Run the AI.sh that is deployed to get all the docker / CUDA / Python stuff installed first
+./ai.sh
+
+# Clone the Directory ( You could do just the docker_run.sh file but maybe you want to see what else is in this ) 
+git -clone 
+
+# Input your PAT GIT key, While the repo is public the container is still private. **Org Policy
+echo ghp_### | docker login ghcr.io -u <username> --password-stdin
 
 # Make the script executable
 chmod +x docker_run.sh
