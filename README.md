@@ -53,7 +53,7 @@ For the fastest setup, especially in Cisco DCloud environments, use the `docker_
 ./ai.sh
 
 # Clone the Directory ( You could do just the docker_run.sh file but maybe you want to see what else is in this ) 
-git -clone 
+git -clone https://github.com/ciscoaiteam/bridgy-intersight-llm-demo.git
 
 # Input your PAT GIT key, While the repo is public the container is still private. **Org Policy
 echo ghp_### | docker login ghcr.io -u <username> --password-stdin
