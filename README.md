@@ -66,7 +66,7 @@ For custom configurations or latest source code:
 
 ```bash
 # Clone the repository
-git clone https://github.com/AMac00/bridgy.git
+git clone https://github.com/ciscoaiteam/bridgy-intersight-llm-demo.git
 
 #Run local_build_install.sh
 ./local_build_install.sh
