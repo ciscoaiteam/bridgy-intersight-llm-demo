@@ -1,11 +1,11 @@
 #!/bin/bash
-
+# This file is copied in the container build process.
 echo "[+] Starting Ollama..."
 ollama serve &
 
 sleep 5
 
-echo "[+] Pulling Mistral model..."
+echo "[+] Pulling models..."
 ollama pull gemma2
 
 echo "[+] Activating virtual environment..."

@@ -29,13 +29,16 @@ ENV PATH="/root/.ollama/bin:${PATH}"
 ENV PATH=/usr/local/cuda/bin:${PATH}
 ENV LD_LIBRARY_PATH=/usr/local/cuda/lib64:${LD_LIBRARY_PATH}
 
+# Point Ollama to /config/ollama for model storage
+RUN mkdir -p /config/ollama
+ENV OLLAMA_MODELS=/config/ollama
+
 # Create working directory
 WORKDIR /app
 
 # Copy your project
 COPY ./bridgyv2-main /app/bridgyv2-main
 COPY ./entrypoint.sh /app/entrypoint.sh
-COPY .env /app/bridgyv2-main/.env
 
 # Create and set up Python virtual environment
 RUN python3.10 -m venv /app/bridgyv2-main/venv && \
