@@ -7,3 +7,4 @@ venv/
 *.zip
 # Config Files
 config/intersight.pem
+config/ollama/*
