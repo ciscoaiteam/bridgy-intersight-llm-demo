@@ -14,15 +14,15 @@ REPO_URL="https://github.com/ciscoaiteam/bridgy-intersight-llm-demo.git"
 
 
 # 1. Clone or update repo using token
-if [ ! -d "$INSTALL_DIR/.git" ]; then
-  echo "[+] Cloning Bridgy repo..."
-  git clone "$REPO_URL" "$INSTALL_DIR"
-else
-  echo "[i] Bridgy repo already exists at $INSTALL_DIR"
-  echo "[+] Pulling latest changes..."
-  cd "$INSTALL_DIR"
-  git pull "$REPO_URL"
-fi
+#if [ ! -d "$INSTALL_DIR/.git" ]; then
+#  echo "[+] Cloning Bridgy repo..."
+#  git clone "$REPO_URL" "$INSTALL_DIR"
+#else
+#  echo "[i] Bridgy repo already exists at $INSTALL_DIR"
+#  echo "[+] Pulling latest changes..."
+#  cd "$INSTALL_DIR"
+#  git pull "$REPO_URL"
+#fi
 
 cd "$INSTALL_DIR"
 
