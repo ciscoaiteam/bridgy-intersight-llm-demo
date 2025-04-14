@@ -5,3 +5,5 @@ venv/
 .env
 # Zip file of the old version
 *.zip
+# Config Files
+config/intersight.pem
