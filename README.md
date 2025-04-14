@@ -100,7 +100,7 @@ sudo apt-get update
 sudo apt-get install -y python3-pip python3-dev build-essential libssl-dev zlib1g-dev libjpeg-dev libtiff-dev
 
 # Clone the repository
-git clone https://github.com/AMac00/bridgy.git
+git clone https://github.com/ciscoaiteam/bridgy-intersight-llm-demo.git
 cd bridgy
 
 # Create and activate a virtual environment (recommended)

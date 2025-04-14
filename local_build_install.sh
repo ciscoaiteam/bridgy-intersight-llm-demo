@@ -10,7 +10,7 @@ CONFIG_DIR="$INSTALL_DIR/config"
 ENV_FILE="$CONFIG_DIR/.env"
 PEM_FILE="$CONFIG_DIR/intersight.pem"
 IMAGE_NAME="bridgyv2-app"
-REPO_URL="https://$GH_PAT@github.com/AMac00/bridgy.git"
+REPO_URL="https://github.com/ciscoaiteam/bridgy-intersight-llm-demo.git"
 
 
 # 1. Clone or update repo using token
