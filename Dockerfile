@@ -49,7 +49,6 @@ WORKDIR /app
 # Copy your project
 COPY ./bridgyv2-main /app/bridgyv2-main
 COPY ./entrypoint.sh /app/entrypoint.sh
-COPY ./config /app/config
 
 RUN ARCH=$(uname -m) && \
     if [ "$ARCH" = "x86_64" ]; then \
