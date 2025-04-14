@@ -83,7 +83,13 @@ fi
 SHELL_RC="$HOME/.bashrc"
 [ -n "$ZSH_VERSION" ] && SHELL_RC="$HOME/.zshrc"
 
-ALIAS_CMD="alias bridgy-start='docker run --rm -it --gpus all -v $CONFIG_DIR:/config --env-file /config/.env -p 8443:8443 $IMAGE_NAME'"
+ARCH=$(uname -m) && \
+    if [ "$ARCH" = "x86_64" ]; then \
+        ALIAS_CMD="alias bridgy-start='docker run --rm -it --gpus all -v $CONFIG_DIR:/config --env-file /config/.env -p 8443:8443 $IMAGE_NAME'"
+    else \
+        ALIAS_CMD="alias bridgy-start='docker run --rm -it -v $CONFIG_DIR:/config --env-file /config/.env -p 8443:8443 $IMAGE_NAME'"
+    fi
+
 if ! grep -Fq "alias bridgy-start=" "$SHELL_RC"; then
   echo "$ALIAS_CMD" >> "$SHELL_RC"
   echo "[+] Added 'bridgy-start' alias to $SHELL_RC"
