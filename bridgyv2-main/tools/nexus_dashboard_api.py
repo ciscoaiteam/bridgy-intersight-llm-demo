@@ -28,19 +28,16 @@ class NexusDashboardAPI:
             
             # Get API credentials from environment variables
             self.base_url = os.getenv("NEXUS_DASHBOARD_URL", "").rstrip('/')
-            self.username = os.getenv("NEXUS_DASHBOARD_USERNAME")
-            self.password = os.getenv("NEXUS_DASHBOARD_PASSWORD")
+            self.api_key = os.getenv("NEXUS_DASHBOARD_API_KEY")
             
-            logger.debug(f"Environment variables loaded: URL={bool(self.base_url)}, Username={bool(self.username)}, Password={bool(self.password)}")
+            logger.debug(f"Environment variables loaded: URL={bool(self.base_url)}, API Key={bool(self.api_key)}")
             
-            if not self.base_url or not self.username or not self.password:
+            if not self.base_url or not self.api_key:
                 missing_vars = []
                 if not self.base_url:
                     missing_vars.append("NEXUS_DASHBOARD_URL")
-                if not self.username:
-                    missing_vars.append("NEXUS_DASHBOARD_USERNAME")
-                if not self.password:
-                    missing_vars.append("NEXUS_DASHBOARD_PASSWORD")
+                if not self.api_key:
+                    missing_vars.append("NEXUS_DASHBOARD_API_KEY")
                     
                 error_msg = f"Nexus Dashboard credentials not found in environment variables: {', '.join(missing_vars)}"
                 logger.error(error_msg)
@@ -49,16 +46,21 @@ class NexusDashboardAPI:
                 return
                 
             logger.debug(f"Nexus Dashboard URL: {self.base_url}")
-            logger.debug(f"Nexus Dashboard Username: {self.username}")
+            logger.debug(f"Nexus Dashboard API Key: {'*' * 8}{self.api_key[-4:] if self.api_key else ''}")
             
-            # Initialize session and token
+            # Initialize session
             self.session = requests.Session()
             self.session.verify = False  # Skip SSL verification
-            self.token = None
-            self.token_expiry = 0
             
-            # Authenticate immediately
-            self._authenticate()
+            # Set API key in the headers
+            self.session.headers.update({
+                "X-Auth-Token": self.api_key,
+                "Content-Type": "application/json",
+                "Accept": "application/json"
+            })
+            
+            # Validate the API key by making a test request
+            self._validate_api_key()
             self.initialization_failed = False
             self.error_message = None
             
@@ -67,76 +69,35 @@ class NexusDashboardAPI:
             self.initialization_failed = True
             self.error_message = str(e)
     
-    def _authenticate(self):
-        """Authenticate with Nexus Dashboard and get token."""
+    def _validate_api_key(self):
+        """Validate the API key by making a test request."""
         try:
-            current_time = time.time()
+            logger.debug("Validating API key with a test request")
             
-            # If token exists and is not expired, skip authentication
-            if self.token and current_time < self.token_expiry:
-                logger.debug("Using existing token")
-                return
+            # Try to access a simple endpoint that requires authentication
+            test_endpoint = "/api/v1/status"
+            url = f"{self.base_url}{test_endpoint}"
+            
+            logger.debug(f"Making validation request to {url}")
+            
+            response = self.session.get(url, timeout=30)
+            
+            if response.status_code == 401 or response.status_code == 403:
+                logger.error(f"API key validation failed with status code {response.status_code}")
+                raise Exception(f"Invalid API key. Authentication failed with status code {response.status_code}")
                 
-            logger.debug(f"Authenticating to Nexus Dashboard at {self.base_url}")
-            
-            # Ensure base_url doesn't end with a trailing slash
-            auth_url = f"{self.base_url}/api/v1/auth/login"
-            
-            payload = {
-                "username": self.username,
-                "password": self.password
-            }
-            
-            logger.debug(f"Making authentication request to {auth_url}")
-            
-            # Set a reasonable timeout for the request
-            response = self.session.post(auth_url, json=payload, timeout=30)
-            
-            # Log response status
-            logger.debug(f"Authentication response status: {response.status_code}")
-            
-            # Check for HTTP errors
-            if response.status_code != 200:
-                logger.error(f"Authentication failed with status code {response.status_code}")
-                logger.error(f"Response content: {response.text[:200]}")  # Log first 200 chars of response
-                raise Exception(f"Authentication failed with status code {response.status_code}")
-                
-            try:
-                auth_data = response.json()
-                logger.debug("Successfully parsed authentication response")
-            except json.JSONDecodeError as e:
-                logger.error(f"Failed to parse authentication response: {str(e)}")
-                logger.error(f"Response content: {response.text[:200]}")
-                raise Exception(f"Failed to parse authentication response: {str(e)}")
-            
-            self.token = auth_data.get("token")
-            
-            if not self.token:
-                logger.error("Authentication response did not contain a token")
-                logger.error(f"Response content: {auth_data}")
-                raise Exception("Authentication failed: No token received")
-                
-            # Set token expiry (default to 30 minutes if not specified)
-            expiry_seconds = auth_data.get("expiry", 1800)
-            self.token_expiry = current_time + expiry_seconds
-            
-            # Set authorization header for future requests
-            self.session.headers.update({"Authorization": f"Bearer {self.token}"})
-            logger.debug("Authentication successful, token received and stored")
+            logger.debug(f"API key validation successful with status code {response.status_code}")
             
         except requests.exceptions.RequestException as e:
-            logger.error(f"Network error during authentication: {str(e)}")
-            raise Exception(f"Network error during authentication: {str(e)}")
+            logger.error(f"Network error during API key validation: {str(e)}")
+            raise Exception(f"Network error during API key validation: {str(e)}")
         except Exception as e:
-            logger.error(f"Authentication error: {str(e)}")
+            logger.error(f"API key validation error: {str(e)}")
             raise
-    
+
     def _make_request(self, method, endpoint, params=None, data=None):
         """Make an API request with authentication."""
         try:
-            # Ensure we have a valid token
-            self._authenticate()
-            
             # Ensure endpoint starts with a slash
             if not endpoint.startswith('/'):
                 endpoint = '/' + endpoint
@@ -185,14 +146,9 @@ class NexusDashboardAPI:
         except requests.exceptions.HTTPError as e:
             logger.error(f"HTTP error: {str(e)}")
             if e.response.status_code == 401:
-                # Token might be expired, force re-authentication
-                logger.info("Received 401 Unauthorized, attempting to refresh token")
-                self.token = None
-                self.token_expiry = 0
-                # Try once more
-                self._authenticate()
-                logger.info("Re-authenticated, retrying request")
-                return self._make_request(method, endpoint, params, data)
+                # API key might be invalid
+                logger.error("Received 401 Unauthorized, API key may be invalid")
+                return {"error": "API key authentication failed", "status_code": e.response.status_code}
             return {"error": str(e), "status_code": e.response.status_code}
             
         except requests.exceptions.RequestException as e:

@@ -20,15 +20,21 @@ To use the Nexus Dashboard expert, you need to set the following environment var
 
 ```
 NEXUS_DASHBOARD_URL=https://your-nexus-dashboard-instance
-NEXUS_DASHBOARD_USERNAME=your-username
-NEXUS_DASHBOARD_PASSWORD=your-password
+NEXUS_DASHBOARD_API_KEY=your-api-key-here
 ```
 
 You can add these to your `.env` file in the project root directory.
 
-### API Access
+### API Key Access
 
-Ensure that the user account specified in the environment variables has appropriate API access permissions in your Nexus Dashboard instance.
+To obtain an API key for Nexus Dashboard:
+
+1. Log in to your Nexus Dashboard instance with administrator credentials
+2. Navigate to Settings > API Access
+3. Create a new API key with appropriate permissions
+4. Copy the generated API key and add it to your `.env` file
+
+Ensure that the API key has appropriate permissions for the operations you want to perform.
 
 ## Usage
 
@@ -57,7 +63,7 @@ If you encounter issues with the Nexus Dashboard expert:
 
 1. Verify that your environment variables are correctly set
 2. Ensure that your Nexus Dashboard instance is accessible from the server running the Bridgy application
-3. Check that the API credentials have sufficient permissions
+3. Check that the API key has sufficient permissions
 4. Review the application logs for specific error messages
 
 ## Fallback Behavior
