@@ -28,16 +28,20 @@ class NexusDashboardAPI:
             
             # Get API credentials from environment variables
             self.base_url = os.getenv("NEXUS_DASHBOARD_URL", "").rstrip('/')
-            self.api_key = os.getenv("NEXUS_DASHBOARD_API_KEY")
+            self.username = os.getenv("NEXUS_DASHBOARD_USERNAME")
+            self.password = os.getenv("NEXUS_DASHBOARD_PASSWORD")
+            self.domain = os.getenv("NEXUS_DASHBOARD_DOMAIN", "local")
             
-            logger.debug(f"Environment variables loaded: URL={bool(self.base_url)}, API Key={bool(self.api_key)}")
+            logger.debug(f"Environment variables loaded: URL={bool(self.base_url)}, Username={bool(self.username)}, Password={bool(self.password)}")
             
-            if not self.base_url or not self.api_key:
+            if not self.base_url or not self.username or not self.password:
                 missing_vars = []
                 if not self.base_url:
                     missing_vars.append("NEXUS_DASHBOARD_URL")
-                if not self.api_key:
-                    missing_vars.append("NEXUS_DASHBOARD_API_KEY")
+                if not self.username:
+                    missing_vars.append("NEXUS_DASHBOARD_USERNAME")
+                if not self.password:
+                    missing_vars.append("NEXUS_DASHBOARD_PASSWORD")
                     
                 error_msg = f"Nexus Dashboard credentials not found in environment variables: {', '.join(missing_vars)}"
                 logger.error(error_msg)
@@ -46,15 +50,14 @@ class NexusDashboardAPI:
                 return
                 
             logger.debug(f"Nexus Dashboard URL: {self.base_url}")
-            logger.debug(f"Nexus Dashboard API Key: {'*' * 8}{self.api_key[-4:] if self.api_key else ''}")
+            logger.debug(f"Nexus Dashboard Username: {self.username}")
             
             # Initialize session
             self.session = requests.Session()
             self.session.verify = False  # Skip SSL verification
             
-            # Set API key in the headers - using the correct header for Nexus Dashboard
+            # Set default headers
             self.session.headers.update({
-                "Authorization": f"Bearer {self.api_key}",
                 "Content-Type": "application/json",
                 "Accept": "application/json"
             })
@@ -62,6 +65,15 @@ class NexusDashboardAPI:
             # Initialize API endpoints based on Nexus Dashboard API documentation
             self.initialize_endpoints()
             
+            # Authenticate and get JWT token
+            self.jwt_token = None
+            login_result = self.login()
+            
+            if not login_result:
+                self.initialization_failed = True
+                self.error_message = "Failed to authenticate with Nexus Dashboard"
+                return
+                
             self.initialization_failed = False
             self.error_message = None
             
@@ -91,10 +103,10 @@ class NexusDashboardAPI:
             "devices": "/nexus/api/sitemanagement/v4/devices",
             
             # System Management
-            "system": "/nexus/api/platformms/v4/system",
-            "health": "/nexus/api/platformms/v4/health",
-            "users": "/nexus/api/platformms/v4/users",
-            "roles": "/nexus/api/platformms/v4/roles",
+            "system": "/nexus/api/platforms/v4/system",
+            "health": "/nexus/api/platforms/v4/health",
+            "users": "/nexus/api/platforms/v4/users",
+            "roles": "/nexus/api/platforms/v4/roles",
             
             # Telemetry
             "telemetry": "/nexus/api/telemetry/v4/metrics",
@@ -106,10 +118,72 @@ class NexusDashboardAPI:
         }
         
         logger.debug("API endpoints initialized")
+    
+    def login(self):
+        """Authenticate with Nexus Dashboard and get JWT token."""
+        try:
+            login_url = f"{self.base_url}{self.endpoints['login']}"
+            logger.debug(f"Authenticating to Nexus Dashboard at {login_url}")
+            
+            login_data = {
+                "userName": self.username,
+                "userPasswd": self.password,
+                "domain": self.domain
+            }
+            
+            response = self.session.post(
+                url=login_url,
+                json=login_data,
+                timeout=30
+            )
+            
+            if response.status_code != 200:
+                logger.error(f"Authentication failed with status code: {response.status_code}")
+                logger.error(f"Response: {response.text}")
+                return False
+            
+            # Parse the response to get the JWT token
+            try:
+                response_data = response.json()
+                
+                # The token might be in 'token' or 'jwttoken' field
+                self.jwt_token = response_data.get('token') or response_data.get('jwttoken')
+                
+                if not self.jwt_token:
+                    logger.error("JWT token not found in login response")
+                    logger.debug(f"Response data: {json.dumps(response_data)}")
+                    return False
+                
+                # Update session headers with JWT token
+                self.session.headers.update({
+                    "Authorization": f"Bearer {self.jwt_token}"
+                })
+                
+                logger.debug("Successfully authenticated with Nexus Dashboard")
+                return True
+                
+            except json.JSONDecodeError:
+                logger.error("Failed to parse login response as JSON")
+                logger.error(f"Response text: {response.text}")
+                return False
+                
+        except requests.exceptions.RequestException as e:
+            logger.error(f"Network error during authentication: {str(e)}")
+            return False
+            
+        except Exception as e:
+            logger.error(f"Error during authentication: {str(e)}")
+            return False
 
     def _make_request(self, method, endpoint, params=None, data=None):
         """Make an API request with authentication."""
         try:
+            # Check if we have a valid JWT token
+            if not self.jwt_token:
+                logger.debug("No JWT token available, attempting to login")
+                if not self.login():
+                    return {"error": "Failed to authenticate with Nexus Dashboard"}
+            
             # Ensure endpoint starts with a slash
             if not endpoint.startswith('/'):
                 endpoint = '/' + endpoint
@@ -131,6 +205,20 @@ class NexusDashboardAPI:
             )
             
             logger.debug(f"Response status code: {response.status_code}")
+            
+            # If we get a 401, our token might have expired, try to login again
+            if response.status_code == 401:
+                logger.debug("Received 401 Unauthorized, attempting to re-authenticate")
+                if self.login():
+                    # Retry the request with the new token
+                    response = self.session.request(
+                        method=method,
+                        url=url,
+                        params=params,
+                        json=data,
+                        timeout=30
+                    )
+                    logger.debug(f"Retry response status code: {response.status_code}")
             
             # Check for HTTP errors
             if response.status_code >= 400:
@@ -181,7 +269,8 @@ class NexusDashboardAPI:
     
     def get_fabrics(self):
         """Get list of fabrics from Nexus Dashboard."""
-        return self._make_request("GET", self.endpoints["fabrics"])
+        # According to the API spec, this should be a POST request with an empty body
+        return self._make_request("POST", self.endpoints["fabrics"], data={})
     
     def get_devices(self):
         """Get list of devices from Nexus Dashboard."""
