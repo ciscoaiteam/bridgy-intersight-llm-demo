@@ -117,7 +117,23 @@ class NexusDashboardAPI:
             "execute_workflow": "/nexus/api/workflows/v4/workflows/execute"
         }
         
+        # Add fallback endpoints for different API versions
+        self.fallback_endpoints = {
+            # v3 endpoints
+            "health_v3": "/nexus/api/platforms/v3/health",
+            "fabrics_v3": "/nexus/api/sitemanagement/v3/fabrics",
+            
+            # v2 endpoints
+            "health_v2": "/nexus/api/platforms/v2/health",
+            "fabrics_v2": "/nexus/api/sitemanagement/v2/fabrics",
+            
+            # v1 endpoints
+            "health_v1": "/api/v1/health",
+            "fabrics_v1": "/api/v1/fabrics"
+        }
+        
         logger.debug("API endpoints initialized")
+        logger.debug("Fallback endpoints initialized")
     
     def login(self):
         """Authenticate with Nexus Dashboard and get JWT token."""
@@ -125,21 +141,34 @@ class NexusDashboardAPI:
             login_url = f"{self.base_url}{self.endpoints['login']}"
             logger.debug(f"Authenticating to Nexus Dashboard at {login_url}")
             
+            # Validate URL format
+            if not self.base_url.startswith(('http://', 'https://')):
+                logger.error(f"Invalid URL format: {self.base_url}")
+                return False
+                
             login_data = {
                 "userName": self.username,
                 "userPasswd": self.password,
                 "domain": self.domain
             }
             
-            response = self.session.post(
-                url=login_url,
-                json=login_data,
-                timeout=30
-            )
+            logger.debug(f"Login attempt with username: {self.username}, domain: {self.domain}")
+            
+            try:
+                response = self.session.post(
+                    url=login_url,
+                    json=login_data,
+                    timeout=30
+                )
+            except requests.exceptions.ConnectionError as e:
+                logger.error(f"Connection error: {str(e)}")
+                self.error_message = f"Connection error: Could not connect to {self.base_url}. Please verify the URL is correct and the server is accessible."
+                return False
             
             if response.status_code != 200:
                 logger.error(f"Authentication failed with status code: {response.status_code}")
                 logger.error(f"Response: {response.text}")
+                self.error_message = f"Authentication failed with status code: {response.status_code}. Response: {response.text[:200]}"
                 return False
             
             # Parse the response to get the JWT token
@@ -152,6 +181,7 @@ class NexusDashboardAPI:
                 if not self.jwt_token:
                     logger.error("JWT token not found in login response")
                     logger.debug(f"Response data: {json.dumps(response_data)}")
+                    self.error_message = "JWT token not found in login response"
                     return False
                 
                 # Update session headers with JWT token
@@ -165,14 +195,17 @@ class NexusDashboardAPI:
             except json.JSONDecodeError:
                 logger.error("Failed to parse login response as JSON")
                 logger.error(f"Response text: {response.text}")
+                self.error_message = f"Failed to parse login response as JSON: {response.text[:200]}"
                 return False
                 
         except requests.exceptions.RequestException as e:
             logger.error(f"Network error during authentication: {str(e)}")
+            self.error_message = f"Network error during authentication: {str(e)}"
             return False
             
         except Exception as e:
             logger.error(f"Error during authentication: {str(e)}")
+            self.error_message = f"Error during authentication: {str(e)}"
             return False
 
     def _make_request(self, method, endpoint, params=None, data=None):
@@ -182,7 +215,7 @@ class NexusDashboardAPI:
             if not self.jwt_token:
                 logger.debug("No JWT token available, attempting to login")
                 if not self.login():
-                    return {"error": "Failed to authenticate with Nexus Dashboard"}
+                    return {"error": f"Failed to authenticate with Nexus Dashboard: {self.error_message}"}
             
             # Ensure endpoint starts with a slash
             if not endpoint.startswith('/'):
@@ -195,54 +228,63 @@ class NexusDashboardAPI:
                 logger.debug(f"Request params: {params}")
             if data:
                 logger.debug(f"Request data: {json.dumps(data)[:200]}")  # Log first 200 chars
+            
+            try:    
+                response = self.session.request(
+                    method=method,
+                    url=url,
+                    params=params,
+                    json=data,
+                    timeout=30  # Set a reasonable timeout
+                )
                 
-            response = self.session.request(
-                method=method,
-                url=url,
-                params=params,
-                json=data,
-                timeout=30  # Set a reasonable timeout
-            )
-            
-            logger.debug(f"Response status code: {response.status_code}")
-            
-            # If we get a 401, our token might have expired, try to login again
-            if response.status_code == 401:
-                logger.debug("Received 401 Unauthorized, attempting to re-authenticate")
-                if self.login():
-                    # Retry the request with the new token
-                    response = self.session.request(
-                        method=method,
-                        url=url,
-                        params=params,
-                        json=data,
-                        timeout=30
-                    )
-                    logger.debug(f"Retry response status code: {response.status_code}")
-            
-            # Check for HTTP errors
-            if response.status_code >= 400:
-                logger.error(f"HTTP error: {response.status_code}")
-                logger.error(f"Response content: {response.text[:200]}")  # Log first 200 chars
-                return {
-                    "error": f"HTTP error {response.status_code}",
-                    "message": response.text[:500] if response.text else "No response content",
-                    "status_code": response.status_code
-                }
+                logger.debug(f"Response status code: {response.status_code}")
                 
-            # Try to parse JSON response
-            try:
-                response_data = response.json()
-                logger.debug(f"Successfully parsed response as JSON")
-                return response_data
-            except json.JSONDecodeError as e:
-                logger.error(f"Failed to parse response as JSON: {str(e)}")
-                # If response is not JSON, return the text content
-                return {
-                    "content": response.text[:1000],  # Limit to 1000 chars
-                    "content_type": response.headers.get('Content-Type', 'unknown')
-                }
+                # If we get a 401, our token might have expired, try to login again
+                if response.status_code == 401:
+                    logger.debug("Received 401 Unauthorized, attempting to re-authenticate")
+                    if self.login():
+                        # Retry the request with the new token
+                        response = self.session.request(
+                            method=method,
+                            url=url,
+                            params=params,
+                            json=data,
+                            timeout=30
+                        )
+                        logger.debug(f"Retry response status code: {response.status_code}")
+                
+                # Check for HTTP errors
+                if response.status_code >= 400:
+                    logger.error(f"HTTP error: {response.status_code}")
+                    logger.error(f"Response content: {response.text}")  # Log full response for debugging
+                    return {
+                        "error": f"HTTP error {response.status_code}",
+                        "message": response.text[:500] if response.text else "No response content",
+                        "status_code": response.status_code
+                    }
+                    
+                # Try to parse JSON response
+                try:
+                    response_data = response.json()
+                    logger.debug(f"Successfully parsed response as JSON")
+                    return response_data
+                except json.JSONDecodeError as e:
+                    logger.error(f"Failed to parse response as JSON: {str(e)}")
+                    # If response is not JSON, return the text content
+                    return {
+                        "content": response.text[:1000],  # Limit to 1000 chars
+                        "content_type": response.headers.get('Content-Type', 'unknown')
+                    }
             
+            except requests.exceptions.ConnectionError as e:
+                logger.error(f"Connection error: {str(e)}")
+                return {"error": f"Connection error: Could not connect to {url}. Please verify the URL is correct and the server is accessible."}
+                
+            except requests.exceptions.Timeout as e:
+                logger.error(f"Request timed out: {str(e)}")
+                return {"error": f"Request timed out after 30 seconds: {str(e)}"}
+                
         except requests.exceptions.HTTPError as e:
             logger.error(f"HTTP error: {str(e)}")
             if e.response.status_code == 401:
@@ -261,7 +303,27 @@ class NexusDashboardAPI:
     
     def get_system_health(self):
         """Get system health information from Nexus Dashboard."""
-        return self._make_request("GET", self.endpoints["health"])
+        # Try the primary endpoint first
+        result = self._make_request("GET", self.endpoints["health"])
+        
+        # If the primary endpoint fails with a 404, try fallback endpoints
+        if result.get("error") and "404" in result.get("error", ""):
+            logger.debug("Primary health endpoint failed, trying fallback endpoints")
+            
+            # Try v3 endpoint
+            result = self._make_request("GET", self.fallback_endpoints["health_v3"])
+            if not result.get("error"):
+                return result
+                
+            # Try v2 endpoint
+            result = self._make_request("GET", self.fallback_endpoints["health_v2"])
+            if not result.get("error"):
+                return result
+                
+            # Try v1 endpoint
+            result = self._make_request("GET", self.fallback_endpoints["health_v1"])
+            
+        return result
     
     def get_sites(self):
         """Get list of sites from Nexus Dashboard."""
@@ -269,8 +331,27 @@ class NexusDashboardAPI:
     
     def get_fabrics(self):
         """Get list of fabrics from Nexus Dashboard."""
-        # According to the API spec, this should be a POST request with an empty body
-        return self._make_request("POST", self.endpoints["fabrics"], data={})
+        # Try the primary endpoint first with POST and empty body
+        result = self._make_request("POST", self.endpoints["fabrics"], data={})
+        
+        # If the primary endpoint fails, try fallback endpoints
+        if result.get("error"):
+            logger.debug("Primary fabrics endpoint failed, trying fallback endpoints")
+            
+            # Try v3 endpoint
+            result = self._make_request("POST", self.fallback_endpoints["fabrics_v3"], data={})
+            if not result.get("error"):
+                return result
+                
+            # Try v2 endpoint
+            result = self._make_request("POST", self.fallback_endpoints["fabrics_v2"], data={})
+            if not result.get("error"):
+                return result
+                
+            # Try v1 endpoint with GET instead of POST
+            result = self._make_request("GET", self.fallback_endpoints["fabrics_v1"])
+            
+        return result
     
     def get_devices(self):
         """Get list of devices from Nexus Dashboard."""
