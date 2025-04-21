@@ -8,6 +8,7 @@ from typing import Dict, List, Any, Optional
 import time
 from urllib3.exceptions import InsecureRequestWarning
 import urllib3
+from dotenv import load_dotenv
 
 # Suppress insecure request warnings
 urllib3.disable_warnings(InsecureRequestWarning)
@@ -22,13 +23,26 @@ class NexusDashboardAPI:
     def __init__(self):
         """Initialize the Nexus Dashboard API client."""
         try:
+            # Ensure environment variables are loaded
+            load_dotenv()
+            
             # Get API credentials from environment variables
-            self.base_url = os.getenv("NEXUS_DASHBOARD_URL")
+            self.base_url = os.getenv("NEXUS_DASHBOARD_URL", "").rstrip('/')
             self.username = os.getenv("NEXUS_DASHBOARD_USERNAME")
             self.password = os.getenv("NEXUS_DASHBOARD_PASSWORD")
             
+            logger.debug(f"Environment variables loaded: URL={bool(self.base_url)}, Username={bool(self.username)}, Password={bool(self.password)}")
+            
             if not self.base_url or not self.username or not self.password:
-                error_msg = "Nexus Dashboard credentials not found in environment variables"
+                missing_vars = []
+                if not self.base_url:
+                    missing_vars.append("NEXUS_DASHBOARD_URL")
+                if not self.username:
+                    missing_vars.append("NEXUS_DASHBOARD_USERNAME")
+                if not self.password:
+                    missing_vars.append("NEXUS_DASHBOARD_PASSWORD")
+                    
+                error_msg = f"Nexus Dashboard credentials not found in environment variables: {', '.join(missing_vars)}"
                 logger.error(error_msg)
                 self.initialization_failed = True
                 self.error_message = error_msg
@@ -63,19 +77,43 @@ class NexusDashboardAPI:
                 logger.debug("Using existing token")
                 return
                 
+            logger.debug(f"Authenticating to Nexus Dashboard at {self.base_url}")
+            
+            # Ensure base_url doesn't end with a trailing slash
             auth_url = f"{self.base_url}/api/v1/auth/login"
+            
             payload = {
                 "username": self.username,
                 "password": self.password
             }
             
-            response = self.session.post(auth_url, json=payload)
-            response.raise_for_status()
+            logger.debug(f"Making authentication request to {auth_url}")
             
-            auth_data = response.json()
+            # Set a reasonable timeout for the request
+            response = self.session.post(auth_url, json=payload, timeout=30)
+            
+            # Log response status
+            logger.debug(f"Authentication response status: {response.status_code}")
+            
+            # Check for HTTP errors
+            if response.status_code != 200:
+                logger.error(f"Authentication failed with status code {response.status_code}")
+                logger.error(f"Response content: {response.text[:200]}")  # Log first 200 chars of response
+                raise Exception(f"Authentication failed with status code {response.status_code}")
+                
+            try:
+                auth_data = response.json()
+                logger.debug("Successfully parsed authentication response")
+            except json.JSONDecodeError as e:
+                logger.error(f"Failed to parse authentication response: {str(e)}")
+                logger.error(f"Response content: {response.text[:200]}")
+                raise Exception(f"Failed to parse authentication response: {str(e)}")
+            
             self.token = auth_data.get("token")
             
             if not self.token:
+                logger.error("Authentication response did not contain a token")
+                logger.error(f"Response content: {auth_data}")
                 raise Exception("Authentication failed: No token received")
                 
             # Set token expiry (default to 30 minutes if not specified)
@@ -84,8 +122,11 @@ class NexusDashboardAPI:
             
             # Set authorization header for future requests
             self.session.headers.update({"Authorization": f"Bearer {self.token}"})
-            logger.debug("Authentication successful")
+            logger.debug("Authentication successful, token received and stored")
             
+        except requests.exceptions.RequestException as e:
+            logger.error(f"Network error during authentication: {str(e)}")
+            raise Exception(f"Network error during authentication: {str(e)}")
         except Exception as e:
             logger.error(f"Authentication error: {str(e)}")
             raise
@@ -96,27 +137,67 @@ class NexusDashboardAPI:
             # Ensure we have a valid token
             self._authenticate()
             
+            # Ensure endpoint starts with a slash
+            if not endpoint.startswith('/'):
+                endpoint = '/' + endpoint
+                
             url = f"{self.base_url}{endpoint}"
+            logger.debug(f"Making {method} request to {url}")
+            
+            if params:
+                logger.debug(f"Request params: {params}")
+            if data:
+                logger.debug(f"Request data: {json.dumps(data)[:200]}")  # Log first 200 chars
+                
             response = self.session.request(
                 method=method,
                 url=url,
                 params=params,
-                json=data
+                json=data,
+                timeout=30  # Set a reasonable timeout
             )
             
-            response.raise_for_status()
-            return response.json()
+            logger.debug(f"Response status code: {response.status_code}")
+            
+            # Check for HTTP errors
+            if response.status_code >= 400:
+                logger.error(f"HTTP error: {response.status_code}")
+                logger.error(f"Response content: {response.text[:200]}")  # Log first 200 chars
+                return {
+                    "error": f"HTTP error {response.status_code}",
+                    "message": response.text[:500] if response.text else "No response content",
+                    "status_code": response.status_code
+                }
+                
+            # Try to parse JSON response
+            try:
+                response_data = response.json()
+                logger.debug(f"Successfully parsed response as JSON")
+                return response_data
+            except json.JSONDecodeError as e:
+                logger.error(f"Failed to parse response as JSON: {str(e)}")
+                # If response is not JSON, return the text content
+                return {
+                    "content": response.text[:1000],  # Limit to 1000 chars
+                    "content_type": response.headers.get('Content-Type', 'unknown')
+                }
             
         except requests.exceptions.HTTPError as e:
             logger.error(f"HTTP error: {str(e)}")
             if e.response.status_code == 401:
                 # Token might be expired, force re-authentication
+                logger.info("Received 401 Unauthorized, attempting to refresh token")
                 self.token = None
                 self.token_expiry = 0
                 # Try once more
                 self._authenticate()
+                logger.info("Re-authenticated, retrying request")
                 return self._make_request(method, endpoint, params, data)
             return {"error": str(e), "status_code": e.response.status_code}
+            
+        except requests.exceptions.RequestException as e:
+            logger.error(f"Network error during request: {str(e)}")
+            return {"error": f"Network error: {str(e)}"}
             
         except Exception as e:
             logger.error(f"Request error: {str(e)}")
