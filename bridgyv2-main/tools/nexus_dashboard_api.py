@@ -72,25 +72,37 @@ class NexusDashboardAPI:
     
     def initialize_endpoints(self):
         """Initialize API endpoints based on Nexus Dashboard API documentation."""
-        # Based on the Nexus Dashboard API documentation
+        # Based on the Nexus Dashboard API documentation v3.2.1
         self.endpoints = {
-            # Platform endpoints
-            "platform": "/api/v1/platform",
-            "sites": "/api/v1/sites",
-            "devices": "/api/v1/devices",
-            "fabrics": "/api/v1/fabrics",
-            "telemetry": "/api/v1/telemetry",
-            "alarms": "/api/v1/alarms",
-            "health": "/api/v1/health",
-            "workflows": "/api/v1/workflows",
-            "execute_workflow": "/api/v1/workflows/execute",
             # Authentication endpoints
             "login": "/login",
             "logout": "/logout",
-            # System endpoints
-            "system": "/api/v1/system",
-            "users": "/api/v1/users",
-            "roles": "/api/v1/roles"
+            
+            # Federation Management
+            "federations": "/nexus/api/federation/v4/federations",
+            "federation_members": "/nexus/api/federation/v4/federationmembers",
+            
+            # Site Management
+            "fabrics": "/nexus/api/sitemanagement/v4/fabrics",
+            "sites": "/nexus/api/sitemanagement/v4/sites",
+            "site_groups": "/nexus/api/sitemanagement/v4/sitegroups",
+            
+            # Device Management
+            "devices": "/nexus/api/sitemanagement/v4/devices",
+            
+            # System Management
+            "system": "/nexus/api/platformms/v4/system",
+            "health": "/nexus/api/platformms/v4/health",
+            "users": "/nexus/api/platformms/v4/users",
+            "roles": "/nexus/api/platformms/v4/roles",
+            
+            # Telemetry
+            "telemetry": "/nexus/api/telemetry/v4/metrics",
+            "alarms": "/nexus/api/telemetry/v4/alerts",
+            
+            # Workflows
+            "workflows": "/nexus/api/workflows/v4/workflows",
+            "execute_workflow": "/nexus/api/workflows/v4/workflows/execute"
         }
         
         logger.debug("API endpoints initialized")
@@ -216,6 +228,10 @@ class NexusDashboardAPI:
         """Get list of users from Nexus Dashboard."""
         return self._make_request("GET", self.endpoints["users"])
     
+    def get_federation_members(self):
+        """Get list of federation members from Nexus Dashboard."""
+        return self._make_request("GET", self.endpoints["federation_members"])
+    
     def query(self, question: str) -> str:
         """Process a natural language query about Nexus Dashboard."""
         if self.initialization_failed:
@@ -272,6 +288,9 @@ class NexusDashboardAPI:
                 
             if any(term in question_lower for term in ["system", "info", "information", "status"]):
                 response_data["system_info"] = self.get_system_info()
+                
+            if any(term in question_lower for term in ["federation", "member", "members", "cluster"]):
+                response_data["federation_members"] = self.get_federation_members()
                 
             # Format the response as a JSON string
             return json.dumps(response_data, indent=2)
