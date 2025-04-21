@@ -52,15 +52,15 @@ class NexusDashboardAPI:
             self.session = requests.Session()
             self.session.verify = False  # Skip SSL verification
             
-            # Set API key in the headers
+            # Set API key in the headers - using the correct header for Nexus Dashboard
             self.session.headers.update({
-                "X-Auth-Token": self.api_key,
+                "Authorization": f"Bearer {self.api_key}",
                 "Content-Type": "application/json",
                 "Accept": "application/json"
             })
             
-            # Discover available API endpoints
-            self.discover_api_endpoints()
+            # Initialize API endpoints based on Nexus Dashboard API documentation
+            self.initialize_endpoints()
             
             self.initialization_failed = False
             self.error_message = None
@@ -70,101 +70,39 @@ class NexusDashboardAPI:
             self.initialization_failed = True
             self.error_message = str(e)
     
-    def discover_api_endpoints(self):
-        """Discover available API endpoints by checking the API documentation."""
-        try:
-            logger.debug("Discovering available API endpoints")
-            
-            # Try to access the API documentation
-            apidocs_url = f"{self.base_url}/apidocs/"
-            logger.debug(f"Checking API documentation at {apidocs_url}")
-            
-            # Store discovered endpoints
-            self.endpoints = {
-                # Default platform endpoints
-                "platform": {
-                    "base": "",
-                    "sites": "/api/v1/sites",
-                    "devices": "/api/v1/devices",
-                    "fabrics": "/api/v1/fabrics",
-                    "telemetry": "/api/v1/telemetry",
-                    "alarms": "/api/v1/alarms",
-                    "workflows": "/api/v1/workflows",
-                    "execute_workflow": "/api/v1/workflows/execute"
-                },
-                # Nexus Dashboard Orchestrator endpoints
-                "ndo": {
-                    "base": "/mso",
-                    "sites": "/api/v1/sites",
-                    "schemas": "/api/v1/schemas",
-                    "tenants": "/api/v1/tenants"
-                },
-                # Nexus Dashboard Insights endpoints
-                "ndi": {
-                    "base": "/sedgeapi/v1/cisco-nir/api",
-                    "telemetry": "/api/telemetry/v2/config",
-                    "alerts": "/api/telemetry/v2/alerts"
-                },
-                # Nexus Dashboard Fabric Controller endpoints
-                "ndfc": {
-                    "base": "/appcenter/cisco/ndfc",
-                    "fabrics": "/api/v1/lan-fabric/rest/control/fabrics"
-                }
-            }
-            
-            logger.debug(f"API endpoints initialized with default values")
-            
-        except Exception as e:
-            logger.error(f"Error discovering API endpoints: {str(e)}")
-            # Continue with default endpoints
-    
-    def _validate_api_key(self):
-        """Validate the API key by making a test request."""
-        try:
-            logger.debug("Validating API key with a test request")
-            
-            # Try to access a simple endpoint that requires authentication
-            # First try platform health endpoint
-            test_endpoint = "/api/v1/platform/health"
-            url = f"{self.base_url}{test_endpoint}"
-            
-            logger.debug(f"Making validation request to {url}")
-            
-            response = self.session.get(url, timeout=30)
-            
-            if response.status_code == 401 or response.status_code == 403:
-                logger.error(f"API key validation failed with status code {response.status_code}")
-                raise Exception(f"Invalid API key. Authentication failed with status code {response.status_code}")
-                
-            logger.debug(f"API key validation successful with status code {response.status_code}")
-            
-        except requests.exceptions.RequestException as e:
-            logger.error(f"Network error during API key validation: {str(e)}")
-            raise Exception(f"Network error during API key validation: {str(e)}")
-        except Exception as e:
-            logger.error(f"API key validation error: {str(e)}")
-            raise
-
-    def _make_request(self, method, endpoint, service="platform", params=None, data=None):
-        """Make an API request with authentication.
+    def initialize_endpoints(self):
+        """Initialize API endpoints based on Nexus Dashboard API documentation."""
+        # Based on the Nexus Dashboard API documentation
+        self.endpoints = {
+            # Platform endpoints
+            "platform": "/api/v1/platform",
+            "sites": "/api/v1/sites",
+            "devices": "/api/v1/devices",
+            "fabrics": "/api/v1/fabrics",
+            "telemetry": "/api/v1/telemetry",
+            "alarms": "/api/v1/alarms",
+            "health": "/api/v1/health",
+            "workflows": "/api/v1/workflows",
+            "execute_workflow": "/api/v1/workflows/execute",
+            # Authentication endpoints
+            "login": "/login",
+            "logout": "/logout",
+            # System endpoints
+            "system": "/api/v1/system",
+            "users": "/api/v1/users",
+            "roles": "/api/v1/roles"
+        }
         
-        Args:
-            method: HTTP method (GET, POST, etc.)
-            endpoint: API endpoint path
-            service: Service name (platform, ndo, ndi, ndfc)
-            params: Query parameters
-            data: Request body data
-        """
+        logger.debug("API endpoints initialized")
+
+    def _make_request(self, method, endpoint, params=None, data=None):
+        """Make an API request with authentication."""
         try:
-            # Get the base path for the service
-            service_base = self.endpoints.get(service, {}).get("base", "")
-            
             # Ensure endpoint starts with a slash
             if not endpoint.startswith('/'):
                 endpoint = '/' + endpoint
                 
-            # Construct the full URL
-            url = f"{self.base_url}{service_base}{endpoint}"
+            url = f"{self.base_url}{endpoint}"
             logger.debug(f"Making {method} request to {url}")
             
             if params:
@@ -221,33 +159,21 @@ class NexusDashboardAPI:
             logger.error(f"Request error: {str(e)}")
             return {"error": str(e)}
     
+    def get_system_health(self):
+        """Get system health information from Nexus Dashboard."""
+        return self._make_request("GET", self.endpoints["health"])
+    
     def get_sites(self):
         """Get list of sites from Nexus Dashboard."""
-        # Try platform sites endpoint
-        response = self._make_request("GET", self.endpoints["platform"]["sites"], service="platform")
-        
-        # If that fails, try NDO sites endpoint
-        if isinstance(response, dict) and response.get("error"):
-            logger.debug("Platform sites endpoint failed, trying NDO sites endpoint")
-            response = self._make_request("GET", self.endpoints["ndo"]["sites"], service="ndo")
-            
-        return response
+        return self._make_request("GET", self.endpoints["sites"])
     
     def get_fabrics(self):
         """Get list of fabrics from Nexus Dashboard."""
-        # Try platform fabrics endpoint
-        response = self._make_request("GET", self.endpoints["platform"]["fabrics"], service="platform")
-        
-        # If that fails, try NDFC fabrics endpoint
-        if isinstance(response, dict) and response.get("error"):
-            logger.debug("Platform fabrics endpoint failed, trying NDFC fabrics endpoint")
-            response = self._make_request("GET", self.endpoints["ndfc"]["fabrics"], service="ndfc")
-            
-        return response
+        return self._make_request("GET", self.endpoints["fabrics"])
     
     def get_devices(self):
         """Get list of devices from Nexus Dashboard."""
-        return self._make_request("GET", self.endpoints["platform"]["devices"], service="platform")
+        return self._make_request("GET", self.endpoints["devices"])
     
     def get_telemetry(self, metric_type, time_range="1h"):
         """Get telemetry data from Nexus Dashboard."""
@@ -255,16 +181,7 @@ class NexusDashboardAPI:
             "type": metric_type,
             "timeRange": time_range
         }
-        
-        # Try platform telemetry endpoint
-        response = self._make_request("GET", self.endpoints["platform"]["telemetry"], service="platform", params=params)
-        
-        # If that fails, try NDI telemetry endpoint
-        if isinstance(response, dict) and response.get("error"):
-            logger.debug("Platform telemetry endpoint failed, trying NDI telemetry endpoint")
-            response = self._make_request("GET", self.endpoints["ndi"]["telemetry"], service="ndi", params=params)
-            
-        return response
+        return self._make_request("GET", self.endpoints["telemetry"], params=params)
     
     def get_alarms(self, severity=None, time_range="24h"):
         """Get alarms from Nexus Dashboard."""
@@ -273,24 +190,14 @@ class NexusDashboardAPI:
         }
         if severity:
             params["severity"] = severity
-            
-        # Try platform alarms endpoint
-        response = self._make_request("GET", self.endpoints["platform"]["alarms"], service="platform", params=params)
-        
-        # If that fails, try NDI alerts endpoint
-        if isinstance(response, dict) and response.get("error"):
-            logger.debug("Platform alarms endpoint failed, trying NDI alerts endpoint")
-            response = self._make_request("GET", self.endpoints["ndi"]["alerts"], service="ndi", params=params)
-            
-        return response
+        return self._make_request("GET", self.endpoints["alarms"], params=params)
     
     def get_workflows(self, status=None):
         """Get automation workflows from Nexus Dashboard."""
         params = {}
         if status:
             params["status"] = status
-            
-        return self._make_request("GET", self.endpoints["platform"]["workflows"], service="platform", params=params)
+        return self._make_request("GET", self.endpoints["workflows"], params=params)
     
     def execute_workflow(self, workflow_id, parameters=None):
         """Execute an automation workflow in Nexus Dashboard."""
@@ -299,8 +206,15 @@ class NexusDashboardAPI:
         }
         if parameters:
             data["parameters"] = parameters
-            
-        return self._make_request("POST", self.endpoints["platform"]["execute_workflow"], service="platform", data=data)
+        return self._make_request("POST", self.endpoints["execute_workflow"], data=data)
+    
+    def get_system_info(self):
+        """Get system information from Nexus Dashboard."""
+        return self._make_request("GET", self.endpoints["system"])
+    
+    def get_users(self):
+        """Get list of users from Nexus Dashboard."""
+        return self._make_request("GET", self.endpoints["users"])
     
     def query(self, question: str) -> str:
         """Process a natural language query about Nexus Dashboard."""
@@ -312,6 +226,9 @@ class NexusDashboardAPI:
             question_lower = question.lower()
             
             response_data = {}
+            
+            # First get system health for a general overview
+            response_data["system_health"] = self.get_system_health()
             
             # Check for different query types and fetch relevant data
             if any(term in question_lower for term in ["site", "sites", "location"]):
@@ -350,13 +267,11 @@ class NexusDashboardAPI:
             if any(term in question_lower for term in ["workflow", "workflows", "automation"]):
                 response_data["workflows"] = self.get_workflows()
                 
-            # If no specific data was requested, get a general overview
-            if not response_data:
-                response_data = {
-                    "sites": self.get_sites(),
-                    "devices": self.get_devices(),
-                    "alarms": self.get_alarms(severity="critical")
-                }
+            if any(term in question_lower for term in ["user", "users", "account", "accounts"]):
+                response_data["users"] = self.get_users()
+                
+            if any(term in question_lower for term in ["system", "info", "information", "status"]):
+                response_data["system_info"] = self.get_system_info()
                 
             # Format the response as a JSON string
             return json.dumps(response_data, indent=2)
