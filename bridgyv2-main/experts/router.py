@@ -4,6 +4,7 @@ from langchain_core.runnables import RunnableSequence
 from .intersight_expert import IntersightExpert
 from .ai_pods_expert import AIPodExpert
 from .general_expert import GeneralExpert
+from .nexus_dashboard_expert import NexusDashboardExpert
 import logging
 from config import setup_langsmith
 
@@ -25,7 +26,8 @@ class ExpertRouter:
         self.experts = {
             "intersight": IntersightExpert(),
             "ai_pods": AIPodExpert(),
-            "general": GeneralExpert()
+            "general": GeneralExpert(),
+            "nexus_dashboard": NexusDashboardExpert()
         }
 
         # Router prompt template
@@ -44,11 +46,18 @@ class ExpertRouter:
            - Machine learning infrastructure sizing
            - AI inference and training hardware
            - Any mention of LLM sizes like 7B, 13B, 40B, 70B, etc.
-        3. General Expert: For general Cisco knowledge questions that don't relate to specific infrastructure
+        3. Nexus Dashboard Expert: For questions about:
+           - Cisco Nexus Dashboard platform
+           - Data center networking telemetry and monitoring
+           - Network fabric management
+           - Network device status and health
+           - Network automation workflows
+           - Any mention of Nexus switches, fabrics, or dashboard
+        4. General Expert: For general Cisco knowledge questions that don't relate to specific infrastructure
 
         Question: {question}
 
-        Respond with just the expert name: "intersight", "ai_pods", or "general"
+        Respond with just the expert name: "intersight", "ai_pods", "nexus_dashboard", or "general"
         """)
 
         # Create router chain using the new RunnableSequence pattern
@@ -84,6 +93,20 @@ class ExpertRouter:
                     logger.error(f"AI Pods Expert error: {str(e)}")
                     return f"AI Pods Expert Error: {str(e)}", "System"
 
+            elif expert_choice == "nexus_dashboard":
+                try:
+                    logger.info("Routing to Nexus Dashboard Expert")
+                    return self.experts["nexus_dashboard"].get_response(query), "Nexus Dashboard Expert"
+                except Exception as e:
+                    logger.error(f"Nexus Dashboard Expert error: {str(e)}")
+                    try:
+                        fallback_response = self.experts["general"].get_response(
+                            f"The user asked '{query}' about Nexus Dashboard, but I couldn't access the Nexus Dashboard API. Please provide a general answer."
+                        )
+                        return f"Note: Could not connect to Nexus Dashboard API. Using general knowledge instead.\n\n{fallback_response}", "General Expert (Fallback)"
+                    except:
+                        return "I'm sorry, I encountered multiple errors trying to process your request.", "System"
+
             else:
                 try:
                     logger.info("Routing to General Expert")
@@ -102,7 +125,7 @@ class ExpertRouter:
             expert_choice = response.strip().lower()
             logger.debug(f"Router chain response: {expert_choice}")
 
-            if expert_choice in ["intersight", "ai_pods", "general"]:
+            if expert_choice in ["intersight", "ai_pods", "nexus_dashboard", "general"]:
                 return expert_choice
 
             last_words = expert_choice.split()[-5:]
@@ -110,12 +133,18 @@ class ExpertRouter:
                 return "intersight"
             elif "ai_pods" in last_words or "ai pods" in ' '.join(last_words):
                 return "ai_pods"
+            elif "nexus_dashboard" in last_words or "nexus dashboard" in ' '.join(last_words):
+                return "nexus_dashboard"
             elif "general" in last_words:
                 return "general"
 
             if self._is_server_inventory_query(query):
                 logger.info("Detected server inventory query via semantic detection")
                 return "intersight"
+                
+            if self._is_nexus_dashboard_query(query):
+                logger.info("Detected Nexus Dashboard query via semantic detection")
+                return "nexus_dashboard"
 
             return "general"
 
@@ -125,6 +154,8 @@ class ExpertRouter:
                 return "intersight"
             elif "ai pods" in query.lower():
                 return "ai_pods"
+            elif "nexus" in query.lower() or "dashboard" in query.lower() or any(word in query.lower() for word in ["fabric", "switch", "network", "telemetry"]):
+                return "nexus_dashboard"
             else:
                 return "general"
 
@@ -146,6 +177,18 @@ class ExpertRouter:
                 return self.experts["ai_pods"].get_response(query), "AI Pods Expert"
             except:
                 return "I'm sorry, I encountered an error with the AI Pods expert.", "System"
+        elif self._is_nexus_dashboard_query(query):
+            try:
+                return self.experts["nexus_dashboard"].get_response(query), "Nexus Dashboard Expert"
+            except Exception as e:
+                logger.error(f"Fallback Nexus Dashboard expert error: {str(e)}")
+                try:
+                    fallback_response = self.experts["general"].get_response(
+                        f"The user asked '{query}' about Nexus Dashboard, but I couldn't access the Nexus Dashboard API. Please provide a general answer."
+                    )
+                    return f"Note: Could not connect to Nexus Dashboard API. Using general knowledge instead.\n\n{fallback_response}", "General Expert (Fallback)"
+                except:
+                    return "I'm sorry, I encountered multiple errors trying to process your request.", "System"
         else:
             try:
                 return self.experts["general"].get_response(query), "General Expert"
@@ -231,3 +274,28 @@ class ExpertRouter:
         ]
 
         return any(environment_patterns)
+
+    def _is_nexus_dashboard_query(self, query: str) -> bool:
+        query_lower = query.lower().strip()
+        
+        nexus_keywords = [
+            "nexus", "dashboard", "fabric", "switch", "switches", "network fabric", 
+            "aci", "apic", "telemetry", "ndfc", "dcnm", "vxlan", "evpn", "bgp"
+        ]
+        
+        if any(keyword in query_lower for keyword in nexus_keywords):
+            general_knowledge_indicators = ["what is", "how does", "explain", "tell me about"]
+            if not any(indicator in query_lower for indicator in general_knowledge_indicators):
+                return True
+                
+        environment_context = [
+            "my" in query_lower and ("network" in query_lower or "fabric" in query_lower),
+            "status" in query_lower and "network" in query_lower,
+            "health" in query_lower and "fabric" in query_lower,
+            "alarm" in query_lower or "alert" in query_lower
+        ]
+        
+        if any(environment_context):
+            return True
+            
+        return False
