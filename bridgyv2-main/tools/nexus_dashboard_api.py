@@ -89,37 +89,9 @@ class NexusDashboardAPI:
             # Authentication endpoints
             "login": "/login",
             "logout": "/logout",
-                     
+            
             # Site Management
             "fabrics": "/appcenter/cisco/ndfc/api/v1/lan-fabric/rest/control/fabrics",
-            "sites": "/appcenter/cisco/ndfc/api/v1/lan-fabric/rest/control/sites",
-            "devices": "/appcenter/cisco/ndfc/api/v1/lan-fabric/rest/control/devices",
-            
-            # System Information
-            "health": "/appcenter/cisco/ndfc/api/v1/lan-fabric/rest/system/health",
-            "system_info": "/appcenter/cisco/ndfc/api/v1/lan-fabric/rest/system/info",
-            
-            # Telemetry
-            "telemetry": "/appcenter/cisco/ndfc/api/v1/lan-fabric/rest/telemetry/metrics",
-            
-            # Alarms
-            "alarms": "/appcenter/cisco/ndfc/api/v1/lan-fabric/rest/alarms",
-            
-            # Workflows
-            "workflows": "/appcenter/cisco/ndfc/api/v1/lan-fabric/rest/workflows",
-            
-            # Users
-            "users": "/appcenter/cisco/ndfc/api/v1/lan-fabric/rest/users",
-            
-            # Federation
-            "federation": "/appcenter/cisco/ndfc/api/v1/lan-fabric/rest/federation/members"
-        }
-        
-        # Define fallback endpoints for different API versions
-        self.fallback_endpoints = {
-            "health_v3": "/appcenter/cisco/ndfc/api/v3/system/health",
-            "health_v2": "/appcenter/cisco/ndfc/api/v2/system/health",
-            "health_v1": "/api/v1/system/health"
         }
         
         logger.debug("API endpoints initialized")
@@ -291,106 +263,34 @@ class NexusDashboardAPI:
             logger.error(f"Request error: {str(e)}")
             return {"error": str(e)}
     
-    def get_system_health(self):
-        """Get system health information from Nexus Dashboard."""
-        # Try the primary endpoint first
-        result = self._make_request("GET", self.endpoints["health"])
-        
-        # If the primary endpoint fails with a 404, try fallback endpoints
-        if result.get("error") and "404" in result.get("error", ""):
-            logger.debug("Primary health endpoint failed, trying fallback endpoints")
-            
-            # Try v3 endpoint
-            result = self._make_request("GET", self.fallback_endpoints["health_v3"])
-            if not result.get("error"):
-                return result
-                
-            # Try v2 endpoint
-            result = self._make_request("GET", self.fallback_endpoints["health_v2"])
-            if not result.get("error"):
-                return result
-                
-            # Try v1 endpoint
-            result = self._make_request("GET", self.fallback_endpoints["health_v1"])
-            
-        return result
+
     
-    def get_sites(self):
-        """Get list of sites from Nexus Dashboard."""
-        return self._make_request("GET", self.endpoints["sites"])
+
     
     def get_fabrics(self):
         """Get list of fabrics from Nexus Dashboard."""
-        # Try the primary endpoint first with POST and empty body
-        result = self._make_request("POST", self.endpoints["fabrics"], data={})
+        # Try GET first
+        result = self._make_request("GET", self.endpoints["fabrics"])
         
-        # If the primary endpoint fails, try fallback endpoints
-        if result.get("error"):
-            logger.debug("Primary fabrics endpoint failed, trying fallback endpoints")
-            
-            # Try v3 endpoint
-            result = self._make_request("POST", self.fallback_endpoints["fabrics_v3"], data={})
-            if not result.get("error"):
-                return result
-                
-            # Try v2 endpoint
-            result = self._make_request("POST", self.fallback_endpoints["fabrics_v2"], data={})
-            if not result.get("error"):
-                return result
-                
-            # Try v1 endpoint with GET instead of POST
-            result = self._make_request("GET", self.fallback_endpoints["fabrics_v1"])
-            
+        # Debug log the result type and structure
+        if isinstance(result, list):
+            logger.debug(f"Received list response with {len(result)} items")
+            if len(result) > 0:
+                logger.debug(f"First item sample: {str(result[0])[:100]}...")
+        elif isinstance(result, dict):
+            logger.debug(f"Received dict response with keys: {result.keys()}")
+        else:
+            logger.debug(f"Received response of type: {type(result)}")
+        
+        # If GET fails, try POST with empty data
+        if isinstance(result, dict) and result.get("error"):
+            logger.debug("GET fabrics endpoint failed, trying POST")
+            result = self._make_request("POST", self.endpoints["fabrics"], data={})
+        
         return result
     
-    def get_devices(self):
-        """Get list of devices from Nexus Dashboard."""
-        return self._make_request("GET", self.endpoints["devices"])
-    
-    def get_telemetry(self, metric_type, time_range="1h"):
-        """Get telemetry data from Nexus Dashboard."""
-        params = {
-            "type": metric_type,
-            "timeRange": time_range
-        }
-        return self._make_request("GET", self.endpoints["telemetry"], params=params)
-    
-    def get_alarms(self, severity=None, time_range="24h"):
-        """Get alarms from Nexus Dashboard."""
-        params = {
-            "timeRange": time_range
-        }
-        if severity:
-            params["severity"] = severity
-        return self._make_request("GET", self.endpoints["alarms"], params=params)
-    
-    def get_workflows(self, status=None):
-        """Get automation workflows from Nexus Dashboard."""
-        params = {}
-        if status:
-            params["status"] = status
-        return self._make_request("GET", self.endpoints["workflows"], params=params)
-    
-    def execute_workflow(self, workflow_id, parameters=None):
-        """Execute an automation workflow in Nexus Dashboard."""
-        data = {
-            "workflowId": workflow_id
-        }
-        if parameters:
-            data["parameters"] = parameters
-        return self._make_request("POST", self.endpoints["execute_workflow"], data=data)
-    
-    def get_system_info(self):
-        """Get system information from Nexus Dashboard."""
-        return self._make_request("GET", self.endpoints["system_info"])
-    
-    def get_users(self):
-        """Get list of users from Nexus Dashboard."""
-        return self._make_request("GET", self.endpoints["users"])
-    
-    def get_federation_members(self):
-        """Get list of federation members from Nexus Dashboard."""
-        return self._make_request("GET", self.endpoints["federation"])
+
+
     
     def query(self, question: str) -> str:
         """Process a natural language query about Nexus Dashboard."""
@@ -403,58 +303,48 @@ class NexusDashboardAPI:
             
             response_data = {}
             
-            # First get system health for a general overview
-            response_data["system_health"] = self.get_system_health()
-            
-            # Check for different query types and fetch relevant data
-            if any(term in question_lower for term in ["site", "sites", "location"]):
-                response_data["sites"] = self.get_sites()
-                
             if any(term in question_lower for term in ["fabric", "fabrics", "network fabric"]):
-                response_data["fabrics"] = self.get_fabrics()
+                logger.debug("Querying fabrics information")
+                fabrics_result = self.get_fabrics()
                 
-            if any(term in question_lower for term in ["device", "devices", "switch", "switches"]):
-                response_data["devices"] = self.get_devices()
-                
-            if any(term in question_lower for term in ["telemetry", "metric", "metrics", "performance"]):
-                # Determine metric type from question
-                metric_type = "utilization"  # Default
-                if "cpu" in question_lower:
-                    metric_type = "cpu"
-                elif "memory" in question_lower:
-                    metric_type = "memory"
-                elif "interface" in question_lower or "port" in question_lower:
-                    metric_type = "interface"
+                # Handle different response types
+                if isinstance(fabrics_result, list):
+                    logger.debug(f"Processing list response with {len(fabrics_result)} items")
+                    # If it's a list, it's likely a list of fabrics
+                    # Extract only essential information to reduce response size
+                    simplified_fabrics = []
+                    for fabric in fabrics_result:
+                        if isinstance(fabric, dict):
+                            simplified_fabric = {
+                                "fabricId": fabric.get("fabricId", "Unknown"),
+                                "fabricName": fabric.get("fabricName", "Unknown"),
+                                "fabricType": fabric.get("fabricType", "Unknown"),
+                                "fabricState": fabric.get("fabricState", "Unknown")
+                            }
+                            simplified_fabrics.append(simplified_fabric)
+                        else:
+                            simplified_fabrics.append(str(fabric))
                     
-                response_data["telemetry"] = self.get_telemetry(metric_type)
-                
-            if any(term in question_lower for term in ["alarm", "alarms", "alert", "alerts", "error"]):
-                # Determine severity from question
-                severity = None
-                if "critical" in question_lower:
-                    severity = "critical"
-                elif "major" in question_lower:
-                    severity = "major"
-                elif "minor" in question_lower:
-                    severity = "minor"
-                    
-                response_data["alarms"] = self.get_alarms(severity)
-                
-            if any(term in question_lower for term in ["workflow", "workflows", "automation"]):
-                response_data["workflows"] = self.get_workflows()
-                
-            if any(term in question_lower for term in ["user", "users", "account", "accounts"]):
-                response_data["users"] = self.get_users()
-                
-            if any(term in question_lower for term in ["system", "info", "information", "status"]):
-                response_data["system_info"] = self.get_system_info()
-                
-            if any(term in question_lower for term in ["federation", "member", "members", "cluster"]):
-                response_data["federation_members"] = self.get_federation_members()
+                    response_data["fabrics"] = {
+                        "count": len(fabrics_result),
+                        "items": simplified_fabrics
+                    }
+                elif isinstance(fabrics_result, dict):
+                    logger.debug(f"Processing dictionary response")
+                    # If it's a dictionary, it might contain error information or structured data
+                    response_data["fabrics"] = fabrics_result
+                else:
+                    logger.debug(f"Processing response of type {type(fabrics_result)}")
+                    # For any other type, convert to string
+                    response_data["fabrics"] = {
+                        "data": str(fabrics_result)
+                    }
                 
             # Format the response as a JSON string
             return json.dumps(response_data, indent=2)
             
         except Exception as e:
             logger.error(f"Error processing query: {str(e)}")
+            import traceback
+            logger.error(f"Traceback: {traceback.format_exc()}")
             return f"Error processing query: {str(e)}"
