@@ -351,6 +351,12 @@ class NexusDashboardAPI:
                 logger.debug("Querying MSD Fabric associations")
                 msd_associations = self.get_msd_fabric_associations()
                 response_data["msd_fabric_associations"] = msd_associations
+            
+            # Check if the question is about devices/switches in NDFC
+            if any(term in question_lower for term in ["device", "devices", "switch", "switches", "ndfc inventory", "all switches"]):
+                logger.debug("Querying all switches/devices in NDFC")
+                all_switches = self.get_all_switches()
+                response_data["switches"] = all_switches
                 
             # Format the response as a JSON string
             return json.dumps(response_data, indent=2)
@@ -486,3 +492,46 @@ class NexusDashboardAPI:
         except Exception as e:
             logger.error(f"Error getting MSD fabric associations: {str(e)}")
             return {"error": f"Exception while retrieving MSD fabric associations: {str(e)}"}
+
+    def get_all_switches(self):
+        """Get all switches/devices from Nexus Dashboard Fabric Controller (NDFC)."""
+        try:
+            # Use the endpoint provided by the user
+            endpoint = "/appcenter/cisco/ndfc/api/v1/lan-fabric/rest/inventory/allswitches"
+            result = self._make_request("GET", endpoint)
+            
+            # If we got a successful response, return it
+            if not (isinstance(result, dict) and result.get("error")):
+                logger.debug(f"Successfully retrieved all switches from NDFC")
+                
+                # If the response is a list, process it to extract essential information
+                if isinstance(result, list):
+                    logger.debug(f"Processing list of {len(result)} switches")
+                    simplified_switches = []
+                    for switch in result:
+                        if isinstance(switch, dict):
+                            # Extract the most important switch information
+                            simplified_switch = {
+                                "deviceName": switch.get("deviceName", "Unknown"),
+                                "ipAddress": switch.get("ipAddress", "Unknown"),
+                                "serialNumber": switch.get("serialNumber", "Unknown"),
+                                "model": switch.get("model", "Unknown"),
+                                "status": switch.get("status", "Unknown"),
+                                "fabricName": switch.get("fabricName", "Unknown")
+                            }
+                            simplified_switches.append(simplified_switch)
+                        else:
+                            simplified_switches.append(str(switch))
+                    
+                    return {
+                        "count": len(result),
+                        "switches": simplified_switches
+                    }
+                
+                return result
+            else:
+                logger.error(f"Failed to retrieve switches from NDFC: {result.get('error', 'Unknown error')}")
+                return {"error": "Failed to retrieve switches from NDFC", "details": result.get("error", "Unknown error")}
+        except Exception as e:
+            logger.error(f"Error getting switches from NDFC: {str(e)}")
+            return {"error": f"Exception while retrieving switches from NDFC: {str(e)}"}
