@@ -339,6 +339,12 @@ class NexusDashboardAPI:
                     response_data["fabrics"] = {
                         "data": str(fabrics_result)
                     }
+            
+            # Check if the question is about external IP configuration for trap and syslog
+            if any(term in question_lower for term in ["external ip", "trap ip", "syslog ip", "trap and syslog", "snmp trap"]):
+                logger.debug("Querying external IP configuration for trap and syslog")
+                external_ip_config = self.get_external_ip_config()
+                response_data["external_ip_config"] = external_ip_config
                 
             # Format the response as a JSON string
             return json.dumps(response_data, indent=2)
@@ -348,3 +354,111 @@ class NexusDashboardAPI:
             import traceback
             logger.error(f"Traceback: {traceback.format_exc()}")
             return f"Error processing query: {str(e)}"
+    
+    def get_external_ip_config(self):
+        """Get external IP configuration for trap and syslog from Nexus Dashboard."""
+        try:
+            # First try to get the network configuration which should include external IPs
+            network_config_endpoint = "/appcenter/cisco/ndfc/api/v1/event/api/getTrapSyslogIP"
+            result = self._make_request("GET", network_config_endpoint)
+
+            # If we got a successful response, extract the trap and syslog IP information
+            if not (isinstance(result, dict) and result.get("error")):
+                # Extract trap and syslog IP information
+                # Note: The exact structure depends on the Nexus Dashboard API response format
+                # This is a generic implementation that should be adapted based on actual response
+                external_ip_info = {
+                    "trap_ip": self._extract_trap_ip(result),
+                    "syslog_ip": self._extract_syslog_ip(result),
+                    "management_ip": self._extract_management_ip(result),
+                    "raw_network_config": result  # Include the raw config for debugging
+                }
+                return external_ip_info
+            else:
+                # If we couldn't get the network config, try to get the system info which might include IP information
+                system_info = self.get_system_info()
+                if not (isinstance(system_info, dict) and system_info.get("error")):
+                    return {
+                        "note": "Could not find specific trap/syslog IP configuration. Using system information instead.",
+                        "system_info": system_info
+                    }
+                else:
+                    return {"error": "Failed to retrieve external IP configuration", "details": result.get("error", "Unknown error")}
+        except Exception as e:
+            logger.error(f"Error getting external IP configuration: {str(e)}")
+            return {"error": f"Exception while retrieving external IP configuration: {str(e)}"}
+    
+    def _extract_trap_ip(self, network_config):
+        """Extract trap IP from network configuration."""
+        # This method should be customized based on the actual response structure
+        try:
+            # Example implementation - adjust based on actual API response format
+            if isinstance(network_config, dict):
+                # Try different possible paths where trap IP might be stored
+                if "trapServer" in network_config:
+                    return network_config["trapServer"]
+                elif "snmp" in network_config and "trapServer" in network_config["snmp"]:
+                    return network_config["snmp"]["trapServer"]
+                elif "networkSettings" in network_config and "snmp" in network_config["networkSettings"]:
+                    return network_config["networkSettings"]["snmp"].get("trapServer", "Not configured")
+            
+            # If we couldn't find it in the expected locations, look for any field that might contain trap information
+            if isinstance(network_config, dict):
+                for key, value in network_config.items():
+                    if "trap" in key.lower() and isinstance(value, str):
+                        return value
+            
+            return "Not found in configuration"
+        except Exception as e:
+            logger.error(f"Error extracting trap IP: {str(e)}")
+            return "Error extracting from configuration"
+    
+    def _extract_syslog_ip(self, network_config):
+        """Extract syslog IP from network configuration."""
+        # This method should be customized based on the actual response structure
+        try:
+            # Example implementation - adjust based on actual API response format
+            if isinstance(network_config, dict):
+                # Try different possible paths where syslog IP might be stored
+                if "syslogServer" in network_config:
+                    return network_config["syslogServer"]
+                elif "syslog" in network_config and "server" in network_config["syslog"]:
+                    return network_config["syslog"]["server"]
+                elif "networkSettings" in network_config and "syslog" in network_config["networkSettings"]:
+                    return network_config["networkSettings"]["syslog"].get("server", "Not configured")
+            
+            # If we couldn't find it in the expected locations, look for any field that might contain syslog information
+            if isinstance(network_config, dict):
+                for key, value in network_config.items():
+                    if "syslog" in key.lower() and isinstance(value, str):
+                        return value
+            
+            return "Not found in configuration"
+        except Exception as e:
+            logger.error(f"Error extracting syslog IP: {str(e)}")
+            return "Error extracting from configuration"
+    
+    def _extract_management_ip(self, network_config):
+        """Extract management IP from network configuration."""
+        # This method should be customized based on the actual response structure
+        try:
+            # Example implementation - adjust based on actual API response format
+            if isinstance(network_config, dict):
+                # Try different possible paths where management IP might be stored
+                if "managementIp" in network_config:
+                    return network_config["managementIp"]
+                elif "management" in network_config and "ip" in network_config["management"]:
+                    return network_config["management"]["ip"]
+                elif "networkSettings" in network_config and "management" in network_config["networkSettings"]:
+                    return network_config["networkSettings"]["management"].get("ip", "Not configured")
+            
+            # If we couldn't find it in the expected locations, look for any field that might contain IP information
+            if isinstance(network_config, dict):
+                for key, value in network_config.items():
+                    if "ip" in key.lower() and "management" in key.lower() and isinstance(value, str):
+                        return value
+            
+            return "Not found in configuration"
+        except Exception as e:
+            logger.error(f"Error extracting management IP: {str(e)}")
+            return "Error extracting from configuration"
