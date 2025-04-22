@@ -89,51 +89,40 @@ class NexusDashboardAPI:
             # Authentication endpoints
             "login": "/login",
             "logout": "/logout",
-            
-            # Federation Management
-            "federations": "/nexus/api/federation/v4/federations",
-            "federation_members": "/nexus/api/federation/v4/federationmembers",
-            
+                     
             # Site Management
-            "fabrics": "/nexus/api/sitemanagement/v4/fabrics",
-            "sites": "/nexus/api/sitemanagement/v4/sites",
-            "site_groups": "/nexus/api/sitemanagement/v4/sitegroups",
+            "fabrics": "/appcenter/cisco/ndfc/api/v1/lan-fabric/rest/control/fabrics",
+            "sites": "/appcenter/cisco/ndfc/api/v1/lan-fabric/rest/control/sites",
+            "devices": "/appcenter/cisco/ndfc/api/v1/lan-fabric/rest/control/devices",
             
-            # Device Management
-            "devices": "/nexus/api/sitemanagement/v4/devices",
-            
-            # System Management
-            "system": "/nexus/api/platforms/v4/system",
-            "health": "/nexus/api/platforms/v4/health",
-            "users": "/nexus/api/platforms/v4/users",
-            "roles": "/nexus/api/platforms/v4/roles",
+            # System Information
+            "health": "/appcenter/cisco/ndfc/api/v1/lan-fabric/rest/system/health",
+            "system_info": "/appcenter/cisco/ndfc/api/v1/lan-fabric/rest/system/info",
             
             # Telemetry
-            "telemetry": "/nexus/api/telemetry/v4/metrics",
-            "alarms": "/nexus/api/telemetry/v4/alerts",
+            "telemetry": "/appcenter/cisco/ndfc/api/v1/lan-fabric/rest/telemetry/metrics",
+            
+            # Alarms
+            "alarms": "/appcenter/cisco/ndfc/api/v1/lan-fabric/rest/alarms",
             
             # Workflows
-            "workflows": "/nexus/api/workflows/v4/workflows",
-            "execute_workflow": "/nexus/api/workflows/v4/workflows/execute"
+            "workflows": "/appcenter/cisco/ndfc/api/v1/lan-fabric/rest/workflows",
+            
+            # Users
+            "users": "/appcenter/cisco/ndfc/api/v1/lan-fabric/rest/users",
+            
+            # Federation
+            "federation": "/appcenter/cisco/ndfc/api/v1/lan-fabric/rest/federation/members"
         }
         
-        # Add fallback endpoints for different API versions
+        # Define fallback endpoints for different API versions
         self.fallback_endpoints = {
-            # v3 endpoints
-            "health_v3": "/nexus/api/platforms/v3/health",
-            "fabrics_v3": "/nexus/api/sitemanagement/v3/fabrics",
-            
-            # v2 endpoints
-            "health_v2": "/nexus/api/platforms/v2/health",
-            "fabrics_v2": "/nexus/api/sitemanagement/v2/fabrics",
-            
-            # v1 endpoints
-            "health_v1": "/api/v1/health",
-            "fabrics_v1": "/api/v1/fabrics"
+            "health_v3": "/appcenter/cisco/ndfc/api/v3/system/health",
+            "health_v2": "/appcenter/cisco/ndfc/api/v2/system/health",
+            "health_v1": "/api/v1/system/health"
         }
         
         logger.debug("API endpoints initialized")
-        logger.debug("Fallback endpoints initialized")
     
     def login(self):
         """Authenticate with Nexus Dashboard and get JWT token."""
@@ -158,7 +147,8 @@ class NexusDashboardAPI:
                 response = self.session.post(
                     url=login_url,
                     json=login_data,
-                    timeout=30
+                    timeout=30,
+                    verify=False  # Disable SSL verification for self-signed certificates
                 )
             except requests.exceptions.ConnectionError as e:
                 logger.error(f"Connection error: {str(e)}")
@@ -392,7 +382,7 @@ class NexusDashboardAPI:
     
     def get_system_info(self):
         """Get system information from Nexus Dashboard."""
-        return self._make_request("GET", self.endpoints["system"])
+        return self._make_request("GET", self.endpoints["system_info"])
     
     def get_users(self):
         """Get list of users from Nexus Dashboard."""
@@ -400,7 +390,7 @@ class NexusDashboardAPI:
     
     def get_federation_members(self):
         """Get list of federation members from Nexus Dashboard."""
-        return self._make_request("GET", self.endpoints["federation_members"])
+        return self._make_request("GET", self.endpoints["federation"])
     
     def query(self, question: str) -> str:
         """Process a natural language query about Nexus Dashboard."""
