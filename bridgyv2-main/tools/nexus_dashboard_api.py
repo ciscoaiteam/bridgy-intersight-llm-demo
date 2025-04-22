@@ -345,6 +345,12 @@ class NexusDashboardAPI:
                 logger.debug("Querying external IP configuration for trap and syslog")
                 external_ip_config = self.get_external_ip_config()
                 response_data["external_ip_config"] = external_ip_config
+            
+            # Check if the question is about MSD Fabric associations
+            if any(term in question_lower for term in ["msd", "multi-site", "multisite", "fabric association", "fabric associations"]):
+                logger.debug("Querying MSD Fabric associations")
+                msd_associations = self.get_msd_fabric_associations()
+                response_data["msd_fabric_associations"] = msd_associations
                 
             # Format the response as a JSON string
             return json.dumps(response_data, indent=2)
@@ -462,3 +468,21 @@ class NexusDashboardAPI:
         except Exception as e:
             logger.error(f"Error extracting management IP: {str(e)}")
             return "Error extracting from configuration"
+
+    def get_msd_fabric_associations(self):
+        """Get MSD Fabric associations from Nexus Dashboard."""
+        try:
+            # Use the endpoint provided by the user
+            endpoint = "/appcenter/cisco/ndfc/api/v1/lan-fabric/rest/control/fabrics/msd/fabric-associations"
+            result = self._make_request("GET", endpoint)
+            
+            # If we got a successful response, return it
+            if not (isinstance(result, dict) and result.get("error")):
+                logger.debug(f"Successfully retrieved MSD fabric associations")
+                return result
+            else:
+                logger.error(f"Failed to retrieve MSD fabric associations: {result.get('error', 'Unknown error')}")
+                return {"error": "Failed to retrieve MSD fabric associations", "details": result.get("error", "Unknown error")}
+        except Exception as e:
+            logger.error(f"Error getting MSD fabric associations: {str(e)}")
+            return {"error": f"Exception while retrieving MSD fabric associations: {str(e)}"}
