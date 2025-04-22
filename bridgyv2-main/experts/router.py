@@ -1,4 +1,5 @@
 from langchain_ollama import OllamaLLM  # Updated import
+from langchain_openai import ChatOpenAI
 from langchain.prompts import ChatPromptTemplate
 from langchain_core.runnables import RunnableSequence
 from .intersight_expert import IntersightExpert
@@ -16,9 +17,10 @@ setup_langsmith()
 class ExpertRouter:
     def __init__(self):
         # Initialize local Ollama client
-        self.llm = OllamaLLM(
-            model="gemma2",  # Using local gemma2 model
-            base_url="http://localhost:11434",
+        self.llm = ChatOpenAI(
+            api_key = "LLM",
+            model="/ai/models/Meta-Llama-3-8B-Instruct/", 
+            base_url = "http://64.101.169.102:8000/v1",
             temperature=0
         )
 
@@ -45,7 +47,8 @@ class ExpertRouter:
            - LLM models and their hardware requirements
            - Machine learning infrastructure sizing
            - AI inference and training hardware
-           - Any mention of LLM sizes like 7B, 13B, 40B, 70B, etc.
+           - ANY mention of LLM parameter sizes like 7B, 13B, 40B, 70B, etc.
+           - ANY questions about model sizes, parameters, or AI hardware requirements
         3. Nexus Dashboard Expert: For questions about:
            - Cisco Nexus Dashboard platform
            - Data center networking telemetry and monitoring
@@ -152,7 +155,7 @@ class ExpertRouter:
             logger.error(f"Error in chain of thought: {str(e)}")
             if "intersight" in query.lower() or any(word in query.lower() for word in ["server", "servers", "hardware", "datacenter"]):
                 return "intersight"
-            elif "ai pods" in query.lower():
+            elif "ai pods" in query.lower() or "ai pod" in query.lower() or any(word in query.lower() for word in ["llm", "model", "parameter", "parameters"]) or any(size in query.lower() for size in ["7b", "13b", "40b", "70b", "80b"]):
                 return "ai_pods"
             elif "nexus" in query.lower() or "dashboard" in query.lower() or any(word in query.lower() for word in ["fabric", "switch", "network", "telemetry"]):
                 return "nexus_dashboard"
@@ -299,3 +302,35 @@ class ExpertRouter:
             return True
             
         return False
+
+    def get_response(self, question: str) -> str:
+        try:
+            # Determine which expert should handle this question
+            expert_name = self._route_question(question)
+            logger.info(f"Chain of thought selected: {expert_name}")
+            
+            # Route to the appropriate expert
+            logger.info(f"Routing to {expert_name.replace('_', ' ').title()} Expert")
+            expert = self.experts[expert_name]
+            response = expert.get_response(question)
+            
+            # Extract just the content from the response if needed
+            if hasattr(response, 'content'):
+                return response.content
+            elif isinstance(response, dict) and 'content' in response:
+                return response['content']
+            elif isinstance(response, str):
+                return response
+            else:
+                # Try to convert the response to a string if it's not already
+                return str(response)
+        except Exception as e:
+            logger.error(f"{expert_name.replace('_', ' ').title()} Expert error: {str(e)}")
+            
+            # Fall back to general expert if specific expert fails
+            logger.info("Falling back to General Expert due to error")
+            try:
+                return self.experts["general"].get_response(question)
+            except Exception as fallback_error:
+                logger.error(f"Fallback to General Expert also failed: {str(fallback_error)}")
+                return f"I'm sorry, but I encountered an error while processing your question: {str(e)}"

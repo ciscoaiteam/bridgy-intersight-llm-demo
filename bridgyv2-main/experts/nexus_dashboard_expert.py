@@ -1,4 +1,5 @@
 from langchain_ollama import OllamaLLM
+from langchain_openai import ChatOpenAI
 from langchain.prompts import ChatPromptTemplate
 from langchain_core.runnables import RunnableSequence
 from tools.nexus_dashboard_api import NexusDashboardAPI
@@ -9,28 +10,22 @@ logger = logging.getLogger(__name__)
 
 class NexusDashboardExpert:
     def __init__(self):
-        self.llm = OllamaLLM(
-            model="gemma2",  # Using local gemma2 model
-            base_url="http://localhost:11434",
+        self.llm = ChatOpenAI(
+            api_key = "LLM",
+            model="/ai/models/Meta-Llama-3-8B-Instruct/", 
+            base_url = "http://64.101.169.102:8000/v1",
             temperature=0.0
         )
         self.api = NexusDashboardAPI()
 
         # Create prompt template
         self.prompt = ChatPromptTemplate.from_template("""
-        You are a Cisco Nexus Dashboard expert. You specialize in Cisco's data center networking solutions, 
-        particularly the Nexus Dashboard platform which provides a centralized management interface for 
-        Cisco's data center networking products.
-        
-        Use the API response data to answer the user's question accurately and professionally.
-        If the API response contains an error, explain the issue and suggest troubleshooting steps.
+        You are a Cisco Nexus Dashboard expert. Answer the question using the API response data.
         
         Question: {question}
         API Response: {api_response}
 
-        Provide a detailed, technical, and helpful response. Include specific data from the API response
-        when relevant, and explain networking concepts when appropriate. Format data in tables when it
-        improves readability.
+        Provide a concise technical response.
         """)
 
         # Create chain using the RunnableSequence pattern
@@ -52,7 +47,16 @@ class NexusDashboardExpert:
                 "api_response": api_response
             })
             
-            return response
+            # Extract just the content from the response
+            if hasattr(response, 'content'):
+                return response.content
+            elif isinstance(response, dict) and 'content' in response:
+                return response['content']
+            elif isinstance(response, str):
+                return response
+            else:
+                # Try to convert the response to a string if it's not already
+                return str(response)
         except Exception as e:
             logger.error(f"Nexus Dashboard Expert error: {str(e)}")
             raise Exception(f"Nexus Dashboard Expert error: {str(e)}")

@@ -1,4 +1,5 @@
 from langchain_ollama import OllamaLLM  # Updated import
+from langchain_openai import ChatOpenAI
 from langchain.prompts import ChatPromptTemplate
 from langchain_core.runnables import RunnableSequence
 from tools.pdf_loader import PDFLoader
@@ -9,9 +10,10 @@ logger = logging.getLogger(__name__)
 
 class AIPodExpert:
     def __init__(self):
-        self.llm = OllamaLLM(
-            model="gemma2",  # Using local gemma2al model
-            base_url="http://localhost:11434",
+        self.llm = ChatOpenAI(
+            api_key = "LLM",
+            model="/ai/models/Meta-Llama-3-8B-Instruct/", 
+            base_url = "http://64.101.169.102:8000/v1",
             temperature=0.0
         )
         self.pdf_loader = PDFLoader()
@@ -43,28 +45,30 @@ class AIPodExpert:
 
     def get_response(self, question: str) -> str:
         try:
-            logger.info(f"AI Pods Expert: Getting context for question about: {question[:50]}...")
+            # Get relevant context from PDF documents
             context = self.pdf_loader.get_relevant_context(question)
-
-            if "mock content" in str(self.pdf_loader.vector_store.docstore._dict.values()).lower():
-                logger.warning("USING MOCK CONTENT: The AI Pods expert is not using the actual PDF data")
-            else:
-                logger.info("USING REAL PDF: The AI Pods expert is using the actual PDF data")
-
-            if context and len(context) > 100:
-                logger.info(f"Retrieved context of length {len(context)} characters")
-                context_preview = context[:150] + "..." if len(context) > 150 else context
-                logger.info(f"Context preview: {context_preview}")
-            else:
-                logger.warning(f"Retrieved limited or no context: {context}")
-
-            logger.info("Generating AI Pods Expert response using context")
+            
+            # Create the prompt with context
+            prompt_with_context = self.prompt.format(
+                question=question,
+                context=context
+            )
+            
+            # Generate response
             response = self.chain.invoke({
                 "question": question,
                 "context": context
             })
-
-            return response
+            
+            # Extract just the content from the response
+            if hasattr(response, 'content'):
+                return response.content
+            elif isinstance(response, dict) and 'content' in response:
+                return response['content']
+            elif isinstance(response, str):
+                return response
+            else:
+                # Try to convert the response to a string if it's not already
+                return str(response)
         except Exception as e:
-            logger.error(f"AI Pods Expert error: {str(e)}")
             raise Exception(f"AI Pods Expert error: {str(e)}")
