@@ -14,11 +14,11 @@ setup_langsmith()
 
 class ExpertRouter:
     def __init__(self):
-        # Initialize local Ollama client
-        self.llm = OllamaLLM(
-            model="gemma2",  # Using local gemma2 model
-            base_url="http://localhost:11434",
-            temperature=0
+        self.llm = ChatOpenAI(
+            api_key = "LLM",
+            model="/ai/models/Meta-Llama-3-8B-Instruct/", 
+            base_url = "http://64.101.169.102:8000/v1",
+            temperature=0.0
         )
 
         # Initialize experts
