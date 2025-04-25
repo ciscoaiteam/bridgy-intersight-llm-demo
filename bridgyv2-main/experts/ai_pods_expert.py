@@ -1,4 +1,5 @@
 from langchain_ollama import OllamaLLM  # Updated import
+from langchain_openai import ChatOpenAI
 from langchain.prompts import ChatPromptTemplate
 from langchain_core.runnables import RunnableSequence
 from tools.pdf_loader import PDFLoader

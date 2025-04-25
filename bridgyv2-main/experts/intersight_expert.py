@@ -1,4 +1,5 @@
-from langchain_openai import ChatOpenAI  # Updated import
+from langchain_ollama import OllamaLLM  # Updated import
+from langchain_openai import ChatOpenAI
 from langchain.prompts import ChatPromptTemplate
 from langchain_core.runnables import RunnableSequence
 from tools.intersight_api import IntersightAPI
