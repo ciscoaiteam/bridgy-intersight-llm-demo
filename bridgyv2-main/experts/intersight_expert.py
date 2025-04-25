@@ -7,9 +7,9 @@ from config import setup_langsmith
 class IntersightExpert:
     def __init__(self):
         self.llm = ChatOpenAI(
-            model="/ai/models/Meta-Llama-3-8B-Instruct/",
-            base_url="http://64.101.169.102:8000/v1",
-            api_key="llm-api-key",
+            api_key = "LLM",
+            model="/ai/models/Meta-Llama-3-8B-Instruct/", 
+            base_url = "http://64.101.169.102:8000/v1",
             temperature=0.0
         )
         self.api = IntersightAPI()
