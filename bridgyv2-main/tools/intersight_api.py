@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 import os
@@ -455,6 +454,109 @@ class IntersightClientTool:
         except Exception as e:
             return {"error": str(e)}
             
+    def get_servers_with_firmware_upgrades(self) -> List[Dict[str, Any]]:
+        """Get list of servers that have firmware upgrades available."""
+        try:
+            # First, get the list of servers
+            servers = self.get_servers()
+            if isinstance(servers, dict) and "error" in servers:
+                return {"error": f"Error fetching servers: {servers['error']}"}
+                
+            # Then, check firmware upgrade status for each server
+            api_instance = FirmwareApi(self.api_client)
+            
+            servers_with_upgrades = []
+            
+            for server in servers:
+                try:
+                    # Get the server's moid (managed object ID)
+                    server_moid = None
+                    if hasattr(server, 'moid'):
+                        server_moid = server.moid
+                    elif isinstance(server, dict) and 'moid' in server:
+                        server_moid = server['moid']
+                    
+                    # If we can't get the moid, try to use a filter with the serial number
+                    if not server_moid:
+                        serial = server.get('serial', None)
+                        if not serial:
+                            continue
+                            
+                        # Try to get the server's upgrade status using the serial number as a filter
+                        filter_str = f"RegisteredDevice.Serial eq '{serial}'"
+                        upgrade_status = api_instance.get_firmware_upgrade_status_list(filter=filter_str)
+                    else:
+                        # Get the server's upgrade status using its moid
+                        upgrade_status = api_instance.get_firmware_upgrade_status_list(filter=f"RegisteredDevice.Moid eq '{server_moid}'")
+                    
+                    # Check if there are any available upgrades
+                    has_upgrade_available = False
+                    upgrade_details = {}
+                    
+                    if hasattr(upgrade_status, 'results') and upgrade_status.results:
+                        for status in upgrade_status.results:
+                            # Check if upgrade is available but not completed
+                            if hasattr(status, 'upgrade_status') and status.upgrade_status != 'Completed':
+                                has_upgrade_available = True
+                                
+                                # Add upgrade details
+                                if hasattr(status, 'current_version'):
+                                    upgrade_details['current_version'] = status.current_version
+                                if hasattr(status, 'available_version'):
+                                    upgrade_details['available_version'] = status.available_version
+                                if hasattr(status, 'upgrade_status'):
+                                    upgrade_details['status'] = status.upgrade_status
+                                break
+                    
+                    # Alternative approach: check for direct upgrade recommendations
+                    try:
+                        # Try to get firmware recommendations for this server
+                        if server_moid:
+                            recommendations = api_instance.get_firmware_upgrade_list(filter=f"Server.Moid eq '{server_moid}'")
+                        else:
+                            recommendations = api_instance.get_firmware_upgrade_list(filter=f"Server.Serial eq '{serial}'")
+                            
+                        if hasattr(recommendations, 'results') and recommendations.results:
+                            has_upgrade_available = True
+                            
+                            # Get the first recommendation
+                            recommendation = recommendations.results[0]
+                            
+                            # Add recommendation details
+                            if hasattr(recommendation, 'current_firmware'):
+                                upgrade_details['current_version'] = recommendation.current_firmware
+                            if hasattr(recommendation, 'target_firmware'):
+                                upgrade_details['available_version'] = recommendation.target_firmware
+                            if hasattr(recommendation, 'status'):
+                                upgrade_details['status'] = recommendation.status
+                    except Exception as rec_error:
+                        logger.warning(f"Error getting firmware recommendations: {str(rec_error)}")
+                    
+                    # If we found an available upgrade, add this server to our list
+                    if has_upgrade_available:
+                        server_info = {
+                            'name': server.get('name', 'N/A'),
+                            'serial': server.get('serial', 'N/A'),
+                            'model': server.get('model', 'N/A'),
+                            'current_firmware': upgrade_details.get('current_version', 'Unknown'),
+                            'available_firmware': upgrade_details.get('available_version', 'Unknown'),
+                            'upgrade_status': upgrade_details.get('status', 'Available')
+                        }
+                        servers_with_upgrades.append(server_info)
+                
+                except Exception as server_error:
+                    # Log the error but continue processing other servers
+                    logger.warning(f"Error checking firmware for server {server.get('name', 'unknown')}: {str(server_error)}")
+                    continue
+            
+            return servers_with_upgrades
+            
+        except Exception as e:
+            logger.error(f"Error getting servers with firmware upgrades: {str(e)}")
+            import traceback
+            logger.error(traceback.format_exc())
+            return {"error": str(e)}
+            
     def get_server_profiles(self) -> List[Dict[str, Any]]:
         """Get list of server profiles from Intersight."""
         try:
@@ -581,7 +683,8 @@ class IntersightAPI:
                 "vm": ["vm", "virtual machine", "virtualization", "hypervisor"],
                 "device": ["device", "connector", "connection", "registered"],
                 "firmware": ["firmware", "update", "upgrade", "software", "version"],
-                "profile": ["profile", "profiles", "template", "templates", "configuration"]
+                "profile": ["profile", "profiles", "template", "templates", "configuration"],
+                "firmware_upgrade": ["firmware upgrade", "available upgrade", "upgrade available", "need upgrade", "needs upgrade", "firmware update"]
             }
 
             # Match question to query type
@@ -626,6 +729,12 @@ class IntersightAPI:
                 if isinstance(firmware, dict) and "error" in firmware:
                     return f"Error fetching firmware information: {firmware['error']}"
                 return self._format_firmware_response(firmware)
+                
+            elif query_type == "firmware_upgrade":
+                servers = self.client.get_servers_with_firmware_upgrades()
+                if isinstance(servers, dict) and "error" in servers:
+                    return f"Error fetching firmware upgrade information: {servers['error']}"
+                return self._format_firmware_upgrade_response(servers)
                 
             elif query_type == "profile":
                 profiles = self.client.get_server_profiles()
@@ -765,5 +874,18 @@ class IntersightAPI:
 
         for profile in profiles:
             response += f"| {profile.get('name', 'N/A')} | {profile.get('organization', 'N/A')} | {profile.get('status', 'N/A')} | {profile.get('assigned_server', 'N/A')} | {profile.get('model', 'N/A')} | {profile.get('serial', 'N/A')} |\n"
+
+        return response
+
+    def _format_firmware_upgrade_response(self, servers: List[Dict[str, Any]]) -> str:
+        if not servers:
+            return "No servers with available firmware upgrades found in your environment."
+
+        response = "## Servers with Available Firmware Upgrades\n\n"
+        response += "| Server Name | Model | Serial | Current Firmware | Available Firmware | Status |\n"
+        response += "|-------------|-------|--------|------------------|-------------------|--------|\n"
+
+        for server in servers:
+            response += f"| {server.get('name', 'N/A')} | {server.get('model', 'N/A')} | {server.get('serial', 'N/A')} | {server.get('current_firmware', 'N/A')} | {server.get('available_firmware', 'N/A')} | {server.get('upgrade_status', 'N/A')} |\n"
 
         return response
