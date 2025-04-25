@@ -1,4 +1,4 @@
-from langchain_ollama import OllamaLLM  # Updated import
+from langchain_openai import ChatOpenAI  # Updated import
 from langchain.prompts import ChatPromptTemplate
 from langchain_core.runnables import RunnableSequence
 from tools.intersight_api import IntersightAPI
@@ -6,9 +6,10 @@ from config import setup_langsmith
 
 class IntersightExpert:
     def __init__(self):
-        self.llm = OllamaLLM(
-            model="gemma2",  # Using local gemma2al model
-            base_url="http://localhost:11434",
+        self.llm = ChatOpenAI(
+            model="/ai/models/Meta-Llama-3-8B-Instruct/",
+            base_url="http://64.101.169.102:8000/v1",
+            api_key="llm-api-key",
             temperature=0.0
         )
         self.api = IntersightAPI()
@@ -33,6 +34,17 @@ class IntersightExpert:
                 "question": question,
                 "api_response": api_response
             })
-            return response
+            
+            # Extract just the content from the response
+            if hasattr(response, 'content'):
+                return response.content
+            elif isinstance(response, dict) and 'content' in response:
+                return response['content']
+            elif isinstance(response, str):
+                return response
+            else:
+                # Try to convert the response to a string if it's not already
+                return str(response)
+                
         except Exception as e:
             raise Exception(f"Intersight Expert error: {str(e)}")
