@@ -670,6 +670,8 @@ class IntersightClientTool:
     def get_firmware_for_server(self, server_name_or_model: str) -> List[Dict[str, Any]]:
         """Get available firmware updates for a specific server by name or model."""
         try:
+            logger.info(f"Getting firmware for server: {server_name_or_model}")
+            
             # First, try to find the server by name to get its model
             servers = self.get_servers()
             if isinstance(servers, dict) and "error" in servers:
@@ -691,16 +693,66 @@ class IntersightClientTool:
                 server_model = server_name_or_model
                 logger.info(f"No server found with name {server_name_or_model}, using as model directly")
             
-            # Get all firmware distributables
-            all_firmware = self.get_firmware_updates()
-            if isinstance(all_firmware, dict) and "error" in all_firmware:
-                return {"error": f"Error fetching firmware: {all_firmware['error']}"}
+            # Get all firmware distributables using direct API call
+            logger.info("Querying firmware distributables endpoint directly")
+            query_params = {}
+            headers = {'Accept': 'application/json'}
+            api_path = '/firmware/Distributables'
+            
+            # Make raw API call
+            response = self.api_client.call_api(
+                api_path, 'GET',
+                query_params=query_params,
+                headers=headers,
+                response_type='object'
+            )
+            
+            if isinstance(response, tuple):
+                data = response[0]  # First element is typically the data
+            else:
+                data = response
+            
+            # Log response structure for debugging
+            logger.info(f"Firmware distributables response type: {type(data)}")
+            if isinstance(data, dict):
+                logger.info(f"Response keys: {list(data.keys())}")
+                if "Results" in data:
+                    logger.info(f"Found {len(data['Results'])} firmware packages")
+            
+            all_firmware = []
+            
+            # Process the data based on its structure
+            if isinstance(data, dict) and "Results" in data:
+                for update in data.get("Results", []):
+                    firmware = {
+                        "name": update.get("Name", "N/A"),
+                        "version": update.get("Version", "N/A"),
+                        "bundle_type": update.get("BundleType", "N/A"),
+                        "platform_type": update.get("PlatformType", "N/A"),
+                        "status": update.get("ImportState", "N/A"),
+                        "created_time": update.get("CreationTime", "N/A"),
+                        "description": update.get("Description", "N/A"),
+                        "moid": update.get("Moid", "N/A")
+                    }
+                    all_firmware.append(firmware)
+            
+            if not all_firmware:
+                logger.warning("No firmware packages found in response")
+                return {
+                    "server_name": server_info.get('name', server_name_or_model) if server_info else server_name_or_model,
+                    "server_model": server_model,
+                    "current_firmware": server_info.get('firmware', 'Unknown') if server_info else 'Unknown',
+                    "compatible_firmware": []
+                }
+            
+            logger.info(f"Processing {len(all_firmware)} firmware packages to find matches for {server_model}")
             
             # Filter firmware for this server model
             compatible_firmware = []
             
             for firmware in all_firmware:
                 platform_type = firmware.get('platform_type', '')
+                logger.debug(f"Checking firmware: {firmware.get('name')} for platform: {platform_type}")
                 
                 # Check for exact model match
                 if platform_type and server_model and (
@@ -708,6 +760,7 @@ class IntersightClientTool:
                     platform_type.lower() in server_model.lower() or
                     server_model.lower() in platform_type.lower()
                 ):
+                    logger.info(f"Found compatible firmware: {firmware.get('name')} - {firmware.get('version')}")
                     compatible_firmware.append(firmware)
                     continue
                 
@@ -718,18 +771,23 @@ class IntersightClientTool:
                     if len(model_parts) > 0:
                         model_family = model_parts[0]
                         if model_family.lower() in platform_type.lower() or platform_type.lower() in model_family.lower():
+                            logger.info(f"Found family match firmware: {firmware.get('name')} - {firmware.get('version')}")
                             compatible_firmware.append(firmware)
                             continue
                 
                 # For HyperFlex servers, also check for "HX" firmware
                 if server_model and "HX" in server_model.upper() and platform_type and "HX" in platform_type.upper():
+                    logger.info(f"Found HX match firmware: {firmware.get('name')} - {firmware.get('version')}")
                     compatible_firmware.append(firmware)
                     continue
                 
                 # For UCS servers, also check for "UCS" firmware
                 if server_model and "UCS" in server_model.upper() and platform_type and "UCS" in platform_type.upper():
+                    logger.info(f"Found UCS match firmware: {firmware.get('name')} - {firmware.get('version')}")
                     compatible_firmware.append(firmware)
                     continue
+            
+            logger.info(f"Found {len(compatible_firmware)} compatible firmware packages")
             
             # Sort firmware by version (newest first)
             try:
@@ -812,6 +870,7 @@ class IntersightAPI:
                     match = re.search(pattern, question.lower())
                     if match:
                         server_name = match.group(1)
+                        logger.info(f"Matched server name '{server_name}' using pattern: {pattern}")
                         break
                 
                 # If we couldn't find a server name but the query contains "server" and is about firmware,
@@ -821,6 +880,7 @@ class IntersightAPI:
                     for i, word in enumerate(words):
                         if i > 0 and words[i-1] == "server" and re.match(r'^[a-z0-9_\-]+$', word):
                             server_name = word
+                            logger.info(f"Found server name '{server_name}' by word position after 'server'")
                             break
                 
                 if server_name:
