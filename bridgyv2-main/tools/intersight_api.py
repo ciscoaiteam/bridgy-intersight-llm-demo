@@ -3,9 +3,10 @@ from __future__ import annotations
 import os
 import json
 import logging
-from typing import Dict, List, Any, Optional
-import time
 import tempfile
+import re
+import time
+from typing import List, Dict, Any, Optional, Tuple, Union
 
 import urllib3
 from urllib3.exceptions import InsecureRequestWarning
@@ -18,9 +19,9 @@ from intersight.api_client import ApiClient
 from intersight.configuration import Configuration
 import intersight.signing
 from intersight.api.compute_api import ComputeApi
+from intersight.api.virtualization_api import VirtualizationApi
 from intersight.api.asset_api import AssetApi
 from intersight.api.network_api import NetworkApi
-from intersight.api.virtualization_api import VirtualizationApi
 from intersight.api.firmware_api import FirmwareApi
 from intersight.rest import ApiException
 
@@ -340,7 +341,6 @@ class IntersightClientTool:
                 
                 if isinstance(response, tuple):
                     data = response[0]  # First element is typically the data
-                    logger.info(f"Tuple response, first element type: {type(data)}")
                 else:
                     data = response
                 
@@ -759,7 +759,6 @@ class IntersightClientTool:
                 logger.info(f"Current HyperFlex firmware version: {current_version}")
                 
                 # Extract version components if possible
-                import re
                 version_match = re.search(r'(\d+)\.(\d+)\((\d+)([a-z]?)\)', current_version) if current_version else None
                 
                 if version_match:
@@ -987,7 +986,6 @@ class IntersightAPI:
                     r"server\s+([a-zA-Z0-9_\-]+)",  # Just "server xyz" anywhere in the query
                 ]
                 
-                import re
                 for pattern in server_patterns:
                     match = re.search(pattern, question.lower())
                     if match:
