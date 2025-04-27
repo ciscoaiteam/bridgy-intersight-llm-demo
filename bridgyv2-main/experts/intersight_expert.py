@@ -22,6 +22,13 @@ class IntersightExpert:
         Question: {question}
         API Response: {api_response}
 
+        IMPORTANT GUIDELINES:
+        1. If the API response contains a formatted table or list of firmware updates, present this information directly without additional analysis.
+        2. For server-specific firmware queries, focus on the compatible firmware packages listed in the API response.
+        3. Do not compare servers with different models unless specifically asked.
+        4. If the API response contains "Available Firmware Updates for [server]" or similar headings, maintain this structure in your response.
+        5. Provide factual information based on the API response rather than speculative analysis.
+
         Provide a detailed and technical response:
         """)
 
@@ -30,7 +37,19 @@ class IntersightExpert:
 
     def get_response(self, question: str) -> str:
         try:
+            # Check if this is a firmware-related query for a specific server
+            is_firmware_query = any(term in question.lower() for term in ["firmware", "update", "upgrade"])
+            is_server_specific = "server" in question.lower() and any(char.isalnum() for char in question)
+            
+            # Get API response
             api_response = self.api.query(question)
+            
+            # For firmware queries, check if we got a proper response with firmware details
+            if is_firmware_query and is_server_specific and "## Available Firmware Updates for" in api_response:
+                # If we have a well-formatted firmware response, return it directly
+                return api_response
+            
+            # Otherwise, use the LLM to interpret the response
             response = self.chain.invoke({
                 "question": question,
                 "api_response": api_response
