@@ -860,6 +860,7 @@ class IntersightClientTool:
             for firmware in all_firmware:
                 platform_type = firmware.get('platform_type', '')
                 name = firmware.get('name', '').upper()
+                description = firmware.get('description', '').upper()
                 logger.debug(f"Checking firmware: {firmware.get('name')} for platform: {platform_type}")
                 
                 # Check for exact model match
@@ -871,6 +872,17 @@ class IntersightClientTool:
                     logger.info(f"Found compatible firmware: {firmware.get('name')} - {firmware.get('version')}")
                     compatible_firmware.append(firmware)
                     continue
+                
+                # For UCSX models, look for firmware packages with the model number without the "UCSX-" prefix
+                if server_model and "UCSX-" in server_model.upper():
+                    # Extract the model number without the UCSX- prefix
+                    model_without_prefix = server_model.upper().replace("UCSX-", "")
+                    
+                    # Check if the model number appears in the firmware name
+                    if model_without_prefix in name or model_without_prefix.replace("-", "") in name.replace("-", ""):
+                        logger.info(f"Found UCSX match firmware: {firmware.get('name')} - {firmware.get('version')}")
+                        compatible_firmware.append(firmware)
+                        continue
                 
                 # Check for platform family match (e.g., "HX" for HyperFlex servers)
                 if server_model and platform_type:
@@ -894,10 +906,41 @@ class IntersightClientTool:
                     continue
                 
                 # For UCS servers, also check for "UCS" firmware
-                if server_model and "UCS" in server_model.upper() and platform_type and "UCS" in platform_type.upper():
+                if server_model and "UCS" in server_model.upper() and (
+                    "UCS" in platform_type.upper() or 
+                    "UCS" in name or
+                    "INTERSIGHT" in name  # Many UCS firmware packages have "intersight" in the name
+                ):
+                    # For X-series, look for firmware with "X" in the name
+                    if "X-" in server_model.upper() and ("X" in name or "X" in platform_type.upper()):
+                        logger.info(f"Found UCS X-Series match firmware: {firmware.get('name')} - {firmware.get('version')}")
+                        compatible_firmware.append(firmware)
+                        continue
+                    
+                    # For M-series, look for firmware with the M-version number
+                    m_version_match = re.search(r'M(\d+)', server_model.upper())
+                    if m_version_match:
+                        m_version = m_version_match.group(0)  # e.g., "M6"
+                        if m_version in name or m_version in platform_type.upper():
+                            logger.info(f"Found UCS M-Series match firmware: {firmware.get('name')} - {firmware.get('version')}")
+                            compatible_firmware.append(firmware)
+                            continue
+                    
+                    # General UCS match
                     logger.info(f"Found UCS match firmware: {firmware.get('name')} - {firmware.get('version')}")
                     compatible_firmware.append(firmware)
                     continue
+                
+                # Check if the firmware name contains the specific model number
+                if server_model:
+                    # Extract model number (e.g., "210C" from "UCSX-210C-M6")
+                    model_number_match = re.search(r'(\d+[A-Za-z]*)', server_model)
+                    if model_number_match:
+                        model_number = model_number_match.group(0)
+                        if model_number.lower() in name.lower():
+                            logger.info(f"Found model number match firmware: {firmware.get('name')} - {firmware.get('version')}")
+                            compatible_firmware.append(firmware)
+                            continue
             
             logger.info(f"Found {len(compatible_firmware)} compatible firmware packages")
             
