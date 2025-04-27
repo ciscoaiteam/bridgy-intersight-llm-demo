@@ -804,6 +804,7 @@ class IntersightAPI:
                     r"(?:for|on)\s+server\s+([a-zA-Z0-9_\-]+)",  # "for server xyz"
                     r"server\s+([a-zA-Z0-9_\-]+)\s+(?:what|which)",  # "server xyz what"
                     r"(?:update|upgrade)\s+([a-zA-Z0-9_\-]+)\s+to",  # "update xyz to"
+                    r"server\s+([a-zA-Z0-9_\-]+)",  # Just "server xyz" anywhere in the query
                 ]
                 
                 import re
@@ -812,6 +813,15 @@ class IntersightAPI:
                     if match:
                         server_name = match.group(1)
                         break
+                
+                # If we couldn't find a server name but the query contains "server" and is about firmware,
+                # look for any word that might be a server name (alphanumeric with possible hyphens)
+                if not server_name and "server" in question.lower():
+                    words = question.lower().split()
+                    for i, word in enumerate(words):
+                        if i > 0 and words[i-1] == "server" and re.match(r'^[a-z0-9_\-]+$', word):
+                            server_name = word
+                            break
                 
                 if server_name:
                     logger.info(f"Detected server-specific firmware query for server: {server_name}")
