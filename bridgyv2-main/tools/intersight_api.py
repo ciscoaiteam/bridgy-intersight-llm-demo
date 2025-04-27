@@ -667,6 +667,92 @@ class IntersightClientTool:
             logger.error(traceback.format_exc())
             return [{"error": str(e)}]
 
+    def get_firmware_for_server(self, server_name_or_model: str) -> List[Dict[str, Any]]:
+        """Get available firmware updates for a specific server by name or model."""
+        try:
+            # First, try to find the server by name to get its model
+            servers = self.get_servers()
+            if isinstance(servers, dict) and "error" in servers:
+                return {"error": f"Error fetching servers: {servers['error']}"}
+            
+            server_model = None
+            server_info = None
+            
+            # Check if server_name_or_model matches a server name
+            for server in servers:
+                if server.get('name', '').lower() == server_name_or_model.lower():
+                    server_model = server.get('model', '')
+                    server_info = server
+                    logger.info(f"Found server {server_name_or_model} with model {server_model}")
+                    break
+            
+            # If no server found by name, assume input is a model
+            if not server_model:
+                server_model = server_name_or_model
+                logger.info(f"No server found with name {server_name_or_model}, using as model directly")
+            
+            # Get all firmware distributables
+            all_firmware = self.get_firmware_updates()
+            if isinstance(all_firmware, dict) and "error" in all_firmware:
+                return {"error": f"Error fetching firmware: {all_firmware['error']}"}
+            
+            # Filter firmware for this server model
+            compatible_firmware = []
+            
+            for firmware in all_firmware:
+                platform_type = firmware.get('platform_type', '')
+                
+                # Check for exact model match
+                if platform_type and server_model and (
+                    platform_type.lower() == server_model.lower() or
+                    platform_type.lower() in server_model.lower() or
+                    server_model.lower() in platform_type.lower()
+                ):
+                    compatible_firmware.append(firmware)
+                    continue
+                
+                # Check for platform family match (e.g., "HX" for HyperFlex servers)
+                if server_model and platform_type:
+                    # Extract platform family from server model (first few characters before the dash)
+                    model_parts = server_model.split('-')
+                    if len(model_parts) > 0:
+                        model_family = model_parts[0]
+                        if model_family.lower() in platform_type.lower() or platform_type.lower() in model_family.lower():
+                            compatible_firmware.append(firmware)
+                            continue
+                
+                # For HyperFlex servers, also check for "HX" firmware
+                if server_model and "HX" in server_model.upper() and platform_type and "HX" in platform_type.upper():
+                    compatible_firmware.append(firmware)
+                    continue
+                
+                # For UCS servers, also check for "UCS" firmware
+                if server_model and "UCS" in server_model.upper() and platform_type and "UCS" in platform_type.upper():
+                    compatible_firmware.append(firmware)
+                    continue
+            
+            # Sort firmware by version (newest first)
+            try:
+                compatible_firmware.sort(key=lambda x: x.get('version', ''), reverse=True)
+            except:
+                # If sorting fails, just leave as is
+                pass
+            
+            # Add server info to the response
+            result = {
+                "server_name": server_info.get('name', server_name_or_model) if server_info else server_name_or_model,
+                "server_model": server_model,
+                "current_firmware": server_info.get('firmware', 'Unknown') if server_info else 'Unknown',
+                "compatible_firmware": compatible_firmware
+            }
+            
+            return result
+            
+        except Exception as e:
+            logger.error(f"Error getting firmware for server {server_name_or_model}: {str(e)}")
+            import traceback
+            logger.error(traceback.format_exc())
+            return {"error": str(e)}
 
 # Update the original IntersightAPI class to use the new client tool and enhanced methods
 class IntersightAPI:
@@ -697,7 +783,8 @@ class IntersightAPI:
                 "device": ["device", "connector", "connection", "registered"],
                 "firmware": ["firmware", "update", "upgrade", "software", "version"],
                 "profile": ["profile", "profiles", "template", "templates", "configuration"],
-                "firmware_upgrade": ["firmware upgrade", "available upgrade", "upgrade available", "need upgrade", "needs upgrade", "firmware update"]
+                "firmware_upgrade": ["firmware upgrade", "available upgrade", "upgrade available", "need upgrade", "needs upgrade", "firmware update"],
+                "server_firmware": ["firmware for server", "update server", "server firmware", "available for", "what firmware is available"]
             }
 
             # Match question to query type
@@ -707,6 +794,32 @@ class IntersightAPI:
                     query_type = category
                     break
 
+            # Check for server-specific firmware query
+            if query_type in ["firmware", "firmware_upgrade", "server_firmware"]:
+                # Extract server name or model from question
+                server_name = None
+                
+                # Look for patterns like "for server X" or "server X"
+                server_patterns = [
+                    r"(?:for|on)\s+server\s+([a-zA-Z0-9_\-]+)",  # "for server xyz"
+                    r"server\s+([a-zA-Z0-9_\-]+)\s+(?:what|which)",  # "server xyz what"
+                    r"(?:update|upgrade)\s+([a-zA-Z0-9_\-]+)\s+to",  # "update xyz to"
+                ]
+                
+                import re
+                for pattern in server_patterns:
+                    match = re.search(pattern, question.lower())
+                    if match:
+                        server_name = match.group(1)
+                        break
+                
+                if server_name:
+                    logger.info(f"Detected server-specific firmware query for server: {server_name}")
+                    firmware_info = self.client.get_firmware_for_server(server_name)
+                    if isinstance(firmware_info, dict) and "error" in firmware_info:
+                        return f"Error fetching firmware information for server {server_name}: {firmware_info['error']}"
+                    return self._format_server_firmware_response(firmware_info)
+            
             if query_type == "server":
                 servers = self.client.get_servers()
                 if isinstance(servers, dict) and "error" in servers:
@@ -905,4 +1018,30 @@ class IntersightAPI:
         for server in servers:
             response += f"**{server.get('name', 'N/A')}**: {server.get('firmware_name', 'N/A')} - {server.get('available_firmware', 'N/A')}\n"
 
+        return response
+        
+    def _format_server_firmware_response(self, firmware_info: Dict[str, Any]) -> str:
+        """Format response for server-specific firmware query."""
+        if isinstance(firmware_info, dict) and "error" in firmware_info:
+            return f"Error: {firmware_info['error']}"
+            
+        server_name = firmware_info.get("server_name", "N/A")
+        server_model = firmware_info.get("server_model", "N/A")
+        current_firmware = firmware_info.get("current_firmware", "Unknown")
+        compatible_firmware = firmware_info.get("compatible_firmware", [])
+        
+        if not compatible_firmware:
+            return f"No compatible firmware updates found for server {server_name} (Model: {server_model}, Current Firmware: {current_firmware})."
+        
+        response = f"## Available Firmware Updates for {server_name}\n\n"
+        response += f"**Server Model:** {server_model}\n"
+        response += f"**Current Firmware:** {current_firmware}\n\n"
+        
+        response += "### Compatible Firmware Packages\n\n"
+        response += "| Firmware Name | Version | Bundle Type | Platform |\n"
+        response += "|--------------|---------|-------------|----------|\n"
+        
+        for firmware in compatible_firmware:
+            response += f"| {firmware.get('name', 'N/A')} | {firmware.get('version', 'N/A')} | {firmware.get('bundle_type', 'N/A')} | {firmware.get('platform_type', 'N/A')} |\n"
+        
         return response
