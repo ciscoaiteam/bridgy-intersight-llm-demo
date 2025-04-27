@@ -325,14 +325,14 @@ class IntersightClientTool:
                 
                 # Fallback to direct API call
                 query_params = {}
-                headers = {'Accept': 'application/json'}
+                header_params = {'Accept': 'application/json'}
                 api_path = '/cond/Alarms'
                 
                 # Make raw API call
                 response = self.api_client.call_api(
                     api_path, 'GET',
                     query_params=query_params,
-                    headers=headers,
+                    header_params=header_params,
                     response_type='object'
                 )
                 
