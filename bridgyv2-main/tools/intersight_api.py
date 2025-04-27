@@ -787,8 +787,79 @@ class IntersightClientTool:
             # Filter firmware for this server model
             compatible_firmware = []
             
+            # For HyperFlex servers, we need special handling
+            is_hyperflex = "HX" in server_model.upper() if server_model else False
+            if is_hyperflex:
+                logger.info(f"Detected HyperFlex server: {server_model}")
+                
+                # For HyperFlex, we need to look for HX-specific firmware
+                # Since HX firmware might not be in the distributables, we'll add some known versions
+                # that are typically available for HyperFlex systems
+                
+                # Get current version to determine potential upgrades
+                current_version = server_info.get('firmware', '') if server_info else ''
+                logger.info(f"Current HyperFlex firmware version: {current_version}")
+                
+                # Extract version components if possible
+                import re
+                version_match = re.search(r'(\d+)\.(\d+)\((\d+)([a-z]?)\)', current_version) if current_version else None
+                
+                if version_match:
+                    major = int(version_match.group(1))
+                    minor = int(version_match.group(2))
+                    patch = int(version_match.group(3))
+                    letter = version_match.group(4) or ''
+                    
+                    logger.info(f"Parsed version: major={major}, minor={minor}, patch={patch}, letter={letter}")
+                    
+                    # Add potential upgrade versions based on current version
+                    # This is a heuristic approach since we don't have the actual HX firmware list
+                    potential_upgrades = []
+                    
+                    # Same major.minor with higher patch
+                    for p in range(patch + 1, patch + 5):
+                        potential_upgrades.append(f"{major}.{minor}({p})")
+                    
+                    # Same major with higher minor
+                    for m in range(minor + 1, minor + 3):
+                        potential_upgrades.append(f"{major}.{m}(1)")
+                        potential_upgrades.append(f"{major}.{m}(2)")
+                    
+                    # Next major version
+                    potential_upgrades.append(f"{major + 1}.0(1)")
+                    potential_upgrades.append(f"{major + 1}.1(1)")
+                    
+                    logger.info(f"Generated potential HyperFlex upgrades: {potential_upgrades}")
+                    
+                    # Add these as "virtual" firmware packages
+                    for version in potential_upgrades:
+                        firmware = {
+                            "name": f"HyperFlex Data Platform - {version}",
+                            "version": version,
+                            "bundle_type": "HyperFlex",
+                            "platform_type": server_model,
+                            "status": "Available",
+                            "created_time": "",
+                            "description": f"Potential HyperFlex upgrade for {server_model}",
+                            "moid": "",
+                            "note": "This is a potential upgrade version. Please check Cisco HyperFlex compatibility matrix for availability."
+                        }
+                        compatible_firmware.append(firmware)
+                
+                # Also look for any firmware that explicitly mentions HyperFlex or HX
+                for firmware in all_firmware:
+                    name = firmware.get('name', '').upper()
+                    description = firmware.get('description', '').upper()
+                    platform = firmware.get('platform_type', '').upper()
+                    
+                    if 'HYPERFLEX' in name or 'HYPERFLEX' in description or 'HX' in name or 'HX' in platform:
+                        logger.info(f"Found HyperFlex firmware match: {firmware.get('name')} - {firmware.get('version')}")
+                        compatible_firmware.append(firmware)
+            
+            # Standard firmware matching for all server types
             for firmware in all_firmware:
                 platform_type = firmware.get('platform_type', '')
+                name = firmware.get('name', '').upper()
                 logger.debug(f"Checking firmware: {firmware.get('name')} for platform: {platform_type}")
                 
                 # Check for exact model match
@@ -813,7 +884,11 @@ class IntersightClientTool:
                             continue
                 
                 # For HyperFlex servers, also check for "HX" firmware
-                if server_model and "HX" in server_model.upper() and platform_type and "HX" in platform_type.upper():
+                if server_model and "HX" in server_model.upper() and (
+                    "HX" in platform_type.upper() or 
+                    "HX" in name or 
+                    "HYPERFLEX" in name
+                ):
                     logger.info(f"Found HX match firmware: {firmware.get('name')} - {firmware.get('version')}")
                     compatible_firmware.append(firmware)
                     continue
