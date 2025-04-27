@@ -100,7 +100,17 @@ class ExpertRouter:
     def _determine_expert_with_cot(self, query: str) -> str:
         try:
             response = self.router_chain.invoke({"question": query})
-            expert_choice = response.strip().lower()
+            
+            # Extract content from response
+            if hasattr(response, 'content'):
+                expert_choice = response.content.strip().lower()
+            elif isinstance(response, dict) and 'content' in response:
+                expert_choice = response['content'].strip().lower()
+            elif isinstance(response, str):
+                expert_choice = response.strip().lower()
+            else:
+                expert_choice = str(response).strip().lower()
+                
             logger.debug(f"Router chain response: {expert_choice}")
 
             if expert_choice in ["intersight", "ai_pods", "general"]:

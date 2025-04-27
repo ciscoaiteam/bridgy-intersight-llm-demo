@@ -28,6 +28,17 @@ class GeneralExpert:
     def get_response(self, question: str) -> str:
         try:
             response = self.chain.invoke({"question": question})
-            return response
+            
+            # Extract just the content from the response
+            if hasattr(response, 'content'):
+                return response.content
+            elif isinstance(response, dict) and 'content' in response:
+                return response['content']
+            elif isinstance(response, str):
+                return response
+            else:
+                # Try to convert the response to a string if it's not already
+                return str(response)
+                
         except Exception as e:
             raise Exception(f"General Expert error: {str(e)}")
