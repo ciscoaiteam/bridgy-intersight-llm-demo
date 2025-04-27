@@ -953,17 +953,26 @@ class IntersightAPI:
                 "device": ["device", "connector", "connection", "registered"],
                 "firmware": ["firmware", "update", "upgrade", "software", "version"],
                 "profile": ["profile", "profiles", "template", "templates", "configuration"],
-                "firmware_upgrade": ["firmware upgrade", "available upgrade", "upgrade available", "need upgrade", "needs upgrade", "firmware update"],
+                "firmware_upgrade": ["firmware upgrade", "available upgrade", "upgrade available", "need upgrade", "needs upgrade", "firmware update", "have available firmware", "have firmware upgrade", "servers with firmware", "servers with available"],
                 "server_firmware": ["firmware for server", "update server", "server firmware", "available for", "what firmware is available"]
             }
 
             # Match question to query type
             query_type = None
-            for category, keywords in query_patterns.items():
-                if any(keyword in question.lower() for keyword in keywords):
-                    query_type = category
-                    break
-
+            
+            # First check for firmware_upgrade as it's more specific than just "firmware"
+            if any(keyword in question.lower() for keyword in query_patterns["firmware_upgrade"]):
+                query_type = "firmware_upgrade"
+            # Then check for server_firmware as it's also more specific
+            elif any(keyword in question.lower() for keyword in query_patterns["server_firmware"]):
+                query_type = "server_firmware"
+            # Then check other categories
+            else:
+                for category, keywords in query_patterns.items():
+                    if category not in ["firmware_upgrade", "server_firmware"] and any(keyword in question.lower() for keyword in keywords):
+                        query_type = category
+                        break
+            
             # Check for server-specific firmware query
             if query_type in ["firmware", "firmware_upgrade", "server_firmware"]:
                 # Extract server name or model from question
