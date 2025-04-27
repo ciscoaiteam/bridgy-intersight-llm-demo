@@ -411,14 +411,14 @@ class IntersightClientTool:
         try:
             # Use direct API call to get firmware distributables
             query_params = {}
-            headers = {'Accept': 'application/json'}
+            header_params = {'Accept': 'application/json'}
             api_path = '/firmware/Distributables'
             
             # Make raw API call
             response = self.api_client.call_api(
                 api_path, 'GET',
                 query_params=query_params,
-                headers=headers,
+                header_params=header_params,
                 response_type='object'
             )
             
@@ -467,14 +467,14 @@ class IntersightClientTool:
             # Get firmware catalogs for additional details
             try:
                 query_params = {}
-                headers = {'Accept': 'application/json'}
+                header_params = {'Accept': 'application/json'}
                 api_path = '/firmware/Catalogs'
                 
                 # Make raw API call
                 response = self.api_client.call_api(
                     api_path, 'GET',
                     query_params=query_params,
-                    headers=headers,
+                    header_params=header_params,
                     response_type='object'
                 )
                 
