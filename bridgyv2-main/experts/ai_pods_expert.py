@@ -66,7 +66,17 @@ class AIPodExpert:
                 "context": context
             })
 
-            return response
+            # Extract just the content from the response
+            if hasattr(response, 'content'):
+                return response.content
+            elif isinstance(response, dict) and 'content' in response:
+                return response['content']
+            elif isinstance(response, str):
+                return response
+            else:
+                # Try to convert the response to a string if it's not already
+                return str(response)
+                
         except Exception as e:
             logger.error(f"AI Pods Expert error: {str(e)}")
             raise Exception(f"AI Pods Expert error: {str(e)}")
