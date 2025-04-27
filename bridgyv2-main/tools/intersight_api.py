@@ -695,46 +695,83 @@ class IntersightClientTool:
             
             # Get all firmware distributables using direct API call
             logger.info("Querying firmware distributables endpoint directly")
-            query_params = {}
-            headers = {'Accept': 'application/json'}
-            api_path = '/firmware/Distributables'
-            
-            # Make raw API call
-            response = self.api_client.call_api(
-                api_path, 'GET',
-                query_params=query_params,
-                headers=headers,
-                response_type='object'
-            )
-            
-            if isinstance(response, tuple):
-                data = response[0]  # First element is typically the data
-            else:
-                data = response
-            
-            # Log response structure for debugging
-            logger.info(f"Firmware distributables response type: {type(data)}")
-            if isinstance(data, dict):
-                logger.info(f"Response keys: {list(data.keys())}")
-                if "Results" in data:
-                    logger.info(f"Found {len(data['Results'])} firmware packages")
-            
-            all_firmware = []
-            
-            # Process the data based on its structure
-            if isinstance(data, dict) and "Results" in data:
-                for update in data.get("Results", []):
-                    firmware = {
-                        "name": update.get("Name", "N/A"),
-                        "version": update.get("Version", "N/A"),
-                        "bundle_type": update.get("BundleType", "N/A"),
-                        "platform_type": update.get("PlatformType", "N/A"),
-                        "status": update.get("ImportState", "N/A"),
-                        "created_time": update.get("CreationTime", "N/A"),
-                        "description": update.get("Description", "N/A"),
-                        "moid": update.get("Moid", "N/A")
-                    }
-                    all_firmware.append(firmware)
+            try:
+                # First try using the SDK's FirmwareApi
+                from intersight.api.firmware_api import FirmwareApi
+                firmware_api = FirmwareApi(self.api_client)
+                response = firmware_api.get_firmware_distributable_list()
+                
+                # Convert the response to the format we need
+                all_firmware = []
+                if hasattr(response, 'results'):
+                    for update in response.results:
+                        firmware = {
+                            "name": getattr(update, "name", "N/A"),
+                            "version": getattr(update, "version", "N/A"),
+                            "bundle_type": getattr(update, "bundle_type", "N/A"),
+                            "platform_type": getattr(update, "platform_type", "N/A"),
+                            "status": getattr(update, "import_state", "N/A"),
+                            "created_time": getattr(update, "created_time", "N/A"),
+                            "description": getattr(update, "description", "N/A"),
+                            "moid": getattr(update, "moid", "N/A")
+                        }
+                        all_firmware.append(firmware)
+                
+                logger.info(f"Found {len(all_firmware)} firmware packages using SDK")
+                
+            except Exception as sdk_error:
+                logger.warning(f"Error using SDK for firmware: {str(sdk_error)}")
+                logger.info("Falling back to alternative API call method")
+                
+                try:
+                    # Try alternative method using header_params instead of headers
+                    query_params = {}
+                    header_params = {'Accept': 'application/json'}
+                    api_path = '/firmware/Distributables'
+                    
+                    # Make raw API call with correct parameter names
+                    response = self.api_client.call_api(
+                        api_path, 'GET',
+                        query_params=query_params,
+                        header_params=header_params,
+                        response_type='object'
+                    )
+                    
+                    if isinstance(response, tuple):
+                        data = response[0]  # First element is typically the data
+                    else:
+                        data = response
+                    
+                    # Log response structure for debugging
+                    logger.info(f"Firmware distributables response type: {type(data)}")
+                    if isinstance(data, dict):
+                        logger.info(f"Response keys: {list(data.keys())}")
+                        if "Results" in data:
+                            logger.info(f"Found {len(data['Results'])} firmware packages")
+                    
+                    all_firmware = []
+                    
+                    # Process the data based on its structure
+                    if isinstance(data, dict) and "Results" in data:
+                        for update in data.get("Results", []):
+                            firmware = {
+                                "name": update.get("Name", "N/A"),
+                                "version": update.get("Version", "N/A"),
+                                "bundle_type": update.get("BundleType", "N/A"),
+                                "platform_type": update.get("PlatformType", "N/A"),
+                                "status": update.get("ImportState", "N/A"),
+                                "created_time": update.get("CreationTime", "N/A"),
+                                "description": update.get("Description", "N/A"),
+                                "moid": update.get("Moid", "N/A")
+                            }
+                            all_firmware.append(firmware)
+                
+                except Exception as alt_error:
+                    logger.error(f"Error with alternative API call: {str(alt_error)}")
+                    # Use the get_firmware_updates method as a last resort
+                    all_firmware = self.get_firmware_updates()
+                    if isinstance(all_firmware, dict) and "error" in all_firmware:
+                        return {"error": f"Error fetching firmware: {all_firmware['error']}"}
             
             if not all_firmware:
                 logger.warning("No firmware packages found in response")
