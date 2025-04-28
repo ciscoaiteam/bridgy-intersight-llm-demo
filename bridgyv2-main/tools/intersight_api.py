@@ -1096,7 +1096,7 @@ class IntersightAPI:
                 "device": ["device", "connector", "connection", "registered"],
                 "firmware": ["firmware", "update", "upgrade", "software", "version"],
                 "profile": ["profile", "profiles", "template", "templates", "configuration"],
-                "firmware_upgrade": ["firmware upgrade", "available upgrade", "upgrade available", "need upgrade", "needs upgrade", "firmware update", "have available firmware", "have firmware upgrade", "servers with firmware", "servers with available"],
+                "firmware_upgrade": ["firmware upgrade", "available upgrade", "upgrade available", "need upgrade", "needs upgrade", "firmware update", "have available firmware", "have firmware upgrade", "servers with firmware", "servers with available", "firmware that can be upgraded", "what servers have firmware", "servers have firmware that can be upgraded", "what servers have firmware that can be upgraded in my environment"],
                 "server_firmware": ["firmware for server", "update server", "server firmware", "available for", "what firmware is available"],
                 "gpu": ["gpu", "graphics card", "nvidia", "amd", "video card", "accelerator", "cuda", "graphics processing", "gpus", "graphics cards"]
             }
@@ -1107,7 +1107,9 @@ class IntersightAPI:
             logger.info(f"Processing query: {question}")
             
             # First check for firmware_upgrade as it's more specific than just "firmware"
-            if any(keyword in question.lower() for keyword in query_patterns["firmware_upgrade"]):
+            if any(keyword in question.lower() for keyword in query_patterns["firmware_upgrade"]) or (
+                "firmware" in question.lower() and any(word in question.lower() for word in ["can be upgraded", "need upgrade", "upgradable", "upgradeable", "that can be upgraded"])
+            ):
                 query_type = "firmware_upgrade"
                 logger.info(f"Detected query type: {query_type}")
             # Then check for server_firmware as it's also more specific
@@ -1357,15 +1359,22 @@ class IntersightAPI:
             return "No servers with available firmware upgrades found in your environment."
 
         response = "### Servers with Available Firmware Upgrades\n\n"
-        response += "| Server Name | Model | Serial | Current Firmware | Available Firmware | Bundle Type |\n"
-        response += "|-------------|-------|--------|------------------|-------------------|------------|\n"
+        response += "| Server Name | Model | Serial | Current Firmware | Available Firmware | Status |\n"
+        response += "|-------------|-------|--------|------------------|-------------------|--------|\n"
 
         for server in servers:
-            response += f"| {server.get('name', 'N/A')} | {server.get('model', 'N/A')} | {server.get('serial', 'N/A')} | {server.get('current_firmware', 'N/A')} | {server.get('available_firmware', 'N/A')} | {server.get('bundle_type', 'N/A')} |\n"
+            upgrade_status = "Upgrade Available"
+            response += f"| {server.get('name', 'N/A')} | {server.get('model', 'N/A')} | {server.get('serial', 'N/A')} | {server.get('current_firmware', 'N/A')} | {server.get('available_firmware', 'N/A')} | {upgrade_status} |\n"
 
-        response += "\n\n#### Firmware Details\n\n"
+        response += "\n\n#### Firmware Upgrade Details\n\n"
         for server in servers:
-            response += f"**{server.get('name', 'N/A')}**: {server.get('firmware_name', 'N/A')} - {server.get('available_firmware', 'N/A')}\n"
+            response += f"**{server.get('name', 'N/A')}**:\n"
+            response += f"- Current Version: {server.get('current_firmware', 'N/A')}\n"
+            response += f"- Available Version: {server.get('available_firmware', 'N/A')}\n"
+            response += f"- Firmware Package: {server.get('firmware_name', 'N/A')}\n"
+            response += f"- Bundle Type: {server.get('bundle_type', 'N/A')}\n\n"
+
+        response += "**Note:** The firmware versions shown are the latest available for each server based on compatibility with the server model. To upgrade, use the Intersight portal to schedule and deploy these firmware updates."
 
         return response
         
