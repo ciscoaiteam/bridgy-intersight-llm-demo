@@ -100,9 +100,15 @@ class InfrastructureAPI:
                 logger.info("Processing switch-related query")
                 return self._format_switches_response(self.get_combined_switches_info())
             
+            # Check for fabric-related queries
+            if any(term in question_lower for term in ["fabric", "fabrics", "vlan", "network fabric"]):
+                logger.info("Processing fabric-related query")
+                # Forward to Nexus Dashboard API
+                return self.nexus_dashboard_api.query(question)
+            
             # For other queries, we could add more combined query handlers here
             # For now, just return a message about supported query types
-            return "Please ask a question about switches or network devices in your environment. For other infrastructure queries, please use the specific expert (Intersight or Nexus Dashboard)."
+            return "The Infrastructure Expert handles queries about network devices and switches across multiple systems. For other infrastructure queries, please use the specific expert (Intersight or Nexus Dashboard)."
             
         except Exception as e:
             logger.error(f"Error processing query: {str(e)}")

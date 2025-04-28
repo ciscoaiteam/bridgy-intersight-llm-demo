@@ -1,6 +1,12 @@
-Intersight API Based Questions:
+Intersight Expert Questions:
 What firmware is running on my servers in my environment?
 What servers have firmware that can be upgraded in my environment? (Needs to be fixed)
 What GPUs are running in my environment?
 
+Nexus Dashboard Expert Questions:
+What is the syslog ip address for my network?
+What fabrics am i running in my environment?
+What MSD Associations are there in my fabric?
+
+Infrastructure Expert Questions
 What switches are running in my environment?
