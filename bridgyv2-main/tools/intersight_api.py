@@ -1149,54 +1149,46 @@ class IntersightAPI:
             self.error_message = None
 
     def query(self, question: str) -> str:
+        """Process a natural language query."""
         # First check if initialization failed
         if hasattr(self, 'initialization_failed') and self.initialization_failed:
             return f"Error: Intersight API initialization failed - {self.error_message}. Please check your API credentials."
-        
+            
         try:
-            # Determine query type based on keywords
-            query_patterns = {
-                "server": ["server", "servers", "ucs", "hardware", "compute", "blade", "rack"],
-                "network": ["network", "vlan", "uplink", "connectivity", "interface"],
-                "health": ["health", "alert", "status", "condition"],
-                "vm": ["vm", "virtual machine", "virtualization", "hypervisor"],
-                "device": ["device", "connector", "connection", "registered"],
-                "firmware": ["firmware", "update", "upgrade", "software", "version"],
-                "profile": ["profile", "profiles", "template", "templates", "configuration"],
-                "firmware_upgrade": ["firmware upgrade", "available upgrade", "upgrade available", "need upgrade", "needs upgrade", "firmware update", "have available firmware", "have firmware upgrade", "servers with firmware", "servers with available", "firmware that can be upgraded", "what servers have firmware", "servers have firmware that can be upgraded", "what servers have firmware that can be upgraded in my environment"],
-                "server_firmware": ["firmware for server", "update server", "server firmware", "available for", "what firmware is available"],
-                "gpu": ["gpu", "graphics card", "nvidia", "amd", "video card", "accelerator", "cuda", "graphics processing", "gpus", "graphics cards"]
-            }
-
-            # Match question to query type
-            query_type = None
+            question_lower = question.lower()
             
-            logger.info(f"Processing query: {question}")
+            # Check for server inventory queries
+            if any(pattern in question_lower for pattern in [
+                "what servers", "server inventory", "list of servers", 
+                "servers in my", "my servers", "all servers"
+            ]):
+                return self._format_servers_response(self.client.get_servers())
+                
+            # Check for firmware queries
+            if "firmware" in question_lower:
+                # Check for firmware upgrade queries
+                if any(pattern in question_lower for pattern in [
+                    "upgrade", "can be upgraded", "available upgrade", 
+                    "newer firmware", "update firmware"
+                ]):
+                    return self._format_firmware_upgrade_response(
+                        self.client.get_servers_with_firmware_upgrades()
+                    )
+                # General firmware query
+                return self._format_firmware_response(self.client.get_firmware_status())
             
-            # First check for firmware_upgrade as it's more specific than just "firmware"
-            if any(keyword in question.lower() for keyword in query_patterns["firmware_upgrade"]) or (
-                "firmware" in question.lower() and any(word in question.lower() for word in ["can be upgraded", "need upgrade", "upgradable", "upgradeable", "that can be upgraded"])
-            ):
-                query_type = "firmware_upgrade"
-                logger.info(f"Detected query type: {query_type}")
-            # Then check for server_firmware as it's also more specific
-            elif any(keyword in question.lower() for keyword in query_patterns["server_firmware"]):
-                query_type = "server_firmware"
-                logger.info(f"Detected query type: {query_type}")
             # Check for GPU queries
-            elif any(keyword in question.lower() for keyword in query_patterns["gpu"]):
-                query_type = "gpu"
-                logger.info(f"Detected query type: {query_type}")
-            # Then check other categories
-            else:
-                for category, keywords in query_patterns.items():
-                    if category not in ["firmware_upgrade", "server_firmware", "gpu"] and any(keyword in question.lower() for keyword in keywords):
-                        query_type = category
-                        logger.info(f"Detected query type: {query_type}")
-                        break
+            if "gpu" in question_lower or "gpus" in question_lower:
+                return self._format_gpu_response(self.client.get_servers())
+                
+            # Check for VM queries
+            if any(pattern in question_lower for pattern in [
+                "vm", "virtual machine", "virtual machines", "vms"
+            ]):
+                return self._format_vms_response(self.client.get_virtual_machines())
             
             # Check for server-specific firmware query
-            if query_type in ["firmware", "firmware_upgrade", "server_firmware"]:
+            if "firmware" in question_lower:
                 # Extract server name or model from question
                 server_name = None
                 
@@ -1209,7 +1201,7 @@ class IntersightAPI:
                 ]
                 
                 for pattern in server_patterns:
-                    match = re.search(pattern, question.lower())
+                    match = re.search(pattern, question_lower)
                     if match:
                         server_name = match.group(1)
                         logger.info(f"Matched server name '{server_name}' using pattern: {pattern}")
@@ -1217,8 +1209,8 @@ class IntersightAPI:
                 
                 # If we couldn't find a server name but the query contains "server" and is about firmware,
                 # look for any word that might be a server name (alphanumeric with possible hyphens)
-                if not server_name and "server" in question.lower():
-                    words = question.lower().split()
+                if not server_name and "server" in question_lower:
+                    words = question_lower.split()
                     for i, word in enumerate(words):
                         if i > 0 and words[i-1] == "server" and re.match(r'^[a-z0-9_\-]+$', word):
                             server_name = word
@@ -1232,68 +1224,38 @@ class IntersightAPI:
                         return f"Error fetching firmware information for server {server_name}: {firmware_info['error']}"
                     return self._format_server_firmware_response(firmware_info)
             
-            if query_type == "server":
-                servers = self.client.get_servers()
-                if isinstance(servers, dict) and "error" in servers:
-                    return f"Error fetching server information: {servers['error']}"
-                return self._format_server_response(servers)
-
-            elif query_type == "network":
-                elements = self.client.get_network_elements()
-                if isinstance(elements, dict) and "error" in elements:
-                    return f"Error fetching network information: {elements['error']}"
-                return self._format_network_response(elements)
-
-            elif query_type == "health":
-                alerts = self.client.get_health_alerts()
-                if isinstance(alerts, dict) and "error" in alerts:
-                    return f"Error fetching health information: {alerts['error']}"
-                return self._format_health_response(alerts)
-                
-            elif query_type == "vm":
-                vms = self.client.get_virtual_machines()
-                if isinstance(vms, dict) and "error" in vms:
-                    return f"Error fetching virtual machine information: {vms['error']}"
-                return self._format_vm_response(vms)
-                
-            elif query_type == "device":
-                devices = self.client.get_device_connectors()
-                if isinstance(devices, dict) and "error" in devices:
-                    return f"Error fetching device connector information: {devices['error']}"
-                return self._format_device_response(devices)
-                
-            elif query_type == "firmware":
-                firmware = self.client.get_firmware_updates()
-                if isinstance(firmware, dict) and "error" in firmware:
-                    return f"Error fetching firmware information: {firmware['error']}"
-                return self._format_firmware_response(firmware)
-                
-            elif query_type == "firmware_upgrade":
-                servers = self.client.get_servers_with_firmware_upgrades()
-                if isinstance(servers, dict) and "error" in servers:
-                    return f"Error fetching firmware upgrade information: {servers['error']}"
-                return self._format_firmware_upgrade_response(servers)
-                
-            elif query_type == "profile":
-                profiles = self.client.get_server_profiles()
-                if isinstance(profiles, dict) and "error" in profiles:
-                    return f"Error fetching profile information: {profiles['error']}"
-                return self._format_profile_response(profiles)
-
-            elif query_type == "gpu":
-                gpu_servers = self.client.get_server_gpus()
-                if isinstance(gpu_servers, dict) and "error" in gpu_servers:
-                    return f"Error fetching GPU information: {gpu_servers['error']}"
-                return self._format_gpu_response(gpu_servers)
-
-            else:
-                return "Please specify what information you'd like to know about your Cisco Intersight infrastructure (servers, network, health status, virtual machines, device connectors, firmware updates, or server profiles)."
+            # Check for network queries
+            if any(pattern in question_lower for pattern in [
+                "network", "vlan", "uplink", "connectivity", "interface"
+            ]):
+                return self._format_network_response(self.client.get_network_elements())
+            
+            # Check for health queries
+            if any(pattern in question_lower for pattern in [
+                "health", "alert", "status", "condition"
+            ]):
+                return self._format_health_response(self.client.get_health_alerts())
+            
+            # Check for device queries
+            if any(pattern in question_lower for pattern in [
+                "device", "connector", "connection", "registered"
+            ]):
+                return self._format_device_response(self.client.get_device_connectors())
+            
+            # Check for profile queries
+            if any(pattern in question_lower for pattern in [
+                "profile", "profiles", "template", "templates", "configuration"
+            ]):
+                return self._format_profile_response(self.client.get_server_profiles())
+            
+            # If we didn't match any query type, return a generic message
+            return "Please specify what information you'd like to know about your Cisco Intersight infrastructure (servers, network, health status, virtual machines, device connectors, firmware updates, or server profiles)."
 
         except Exception as e:
             logger.error(f"Error processing query: {str(e)}")
             return f"Error processing query: {str(e)}"
 
-    def _format_server_response(self, servers: List[Dict[str, Any]]) -> str:
+    def _format_servers_response(self, servers: List[Dict[str, Any]]) -> str:
         if not servers:
             return "No servers found in inventory"
 
@@ -1463,16 +1425,38 @@ class IntersightAPI:
         
         return response
 
-    def _format_gpu_response(self, gpu_servers: List[Dict[str, Any]]) -> str:
+    def _format_gpu_response(self, servers: List[Dict[str, Any]]) -> str:
+        """Format GPU information from servers into a readable response."""
+        gpu_servers = []
+        
+        for server in servers:
+            # Check if server has GPU information
+            if "gpus" in server and server["gpus"]:
+                gpu_servers.append(server)
+        
         if not gpu_servers:
-            return "No servers with GPUs found in your environment."
-
-        response = "### Servers with GPUs\n\n"
-        response += "| Server Name | Server Model | GPU Model |\n"
-        response += "|-------------|-------------|----------|\n"
-
+            return "No GPUs found in any servers in your environment."
+        
+        response = "### GPUs Running in Your Environment\n\n"
+        response += "| Server Name | Server Model | GPU Model | GPU Count |\n"
+        response += "|-------------|--------------|-----------|----------|\n"
+        
         for server in gpu_servers:
-            gpu_info = server.get('gpu', {})
-            response += f"| {server.get('name', 'N/A')} | {server.get('model', 'N/A')} | {gpu_info.get('model', 'N/A')} |\n"
-
+            server_name = server.get("name", "Unknown")
+            server_model = server.get("model", "Unknown")
+            gpus = server.get("gpus", [])
+            
+            # Group GPUs by model for counting
+            gpu_counts = {}
+            for gpu in gpus:
+                gpu_model = gpu.get("model", "Unknown GPU")
+                if gpu_model in gpu_counts:
+                    gpu_counts[gpu_model] += 1
+                else:
+                    gpu_counts[gpu_model] = 1
+            
+            # Add each GPU type as a separate row
+            for gpu_model, count in gpu_counts.items():
+                response += f"| {server_name} | {server_model} | {gpu_model} | {count} |\n"
+        
         return response
