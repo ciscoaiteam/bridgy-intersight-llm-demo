@@ -452,74 +452,74 @@ class IntersightClientTool:
             return {"error": str(e)}
             
     def get_servers_with_firmware_upgrades(self) -> List[Dict[str, Any]]:
-        """Get list of servers that have firmware upgrades available."""
+        """Get a list of servers with available firmware upgrades."""
         try:
-            # First, get the list of servers
+            # Get all servers
             servers = self.get_servers()
-            if isinstance(servers, dict) and "error" in servers:
-                return {"error": f"Error fetching servers: {servers['error']}"}
-            
-            # For each server, check for available firmware upgrades
             servers_with_upgrades = []
             
-            logger.info(f"Checking firmware upgrades for {len(servers)} servers")
-            
             for server in servers:
-                try:
-                    server_name = server.get('name')
-                    if not server_name:
-                        continue
-                    
-                    logger.info(f"Checking firmware for server: {server_name}")
-                    
-                    # Use the get_firmware_for_server method to get compatible firmware
-                    firmware_info = self.get_firmware_for_server(server_name)
-                    
-                    # Check if there are any compatible firmware packages
-                    compatible_firmware = firmware_info.get('compatible_firmware', [])
-                    if not compatible_firmware:
-                        logger.info(f"No compatible firmware found for {server_name}")
-                        continue
-                    
-                    # Get current firmware version
-                    current_firmware = server.get('firmware', 'Unknown')
-                    
-                    # Find newer firmware versions
-                    newer_firmware = []
-                    for firmware in compatible_firmware:
-                        firmware_version = firmware.get('version', 'Unknown')
-                        
-                        # Skip if versions are the same or unknown
-                        if firmware_version == current_firmware or firmware_version == 'Unknown' or current_firmware == 'Unknown':
-                            continue
-                        
-                        # Use proper version comparison
-                        comparison_result = self._compare_firmware_versions(firmware_version, current_firmware)
-                        if comparison_result > 0:  # firmware_version > current_firmware
-                            newer_firmware.append(firmware)
-                    
-                    # If we found newer firmware, add this server to the list
-                    if newer_firmware:
-                        # Get the newest firmware (assuming the first one is the newest)
-                        newest_firmware = newer_firmware[0]
-                        
-                        server_info = {
-                            'name': server_name,
-                            'serial': server.get('serial', 'N/A'),
-                            'model': server.get('model', 'N/A'),
-                            'current_firmware': current_firmware,
-                            'available_firmware': newest_firmware.get('version', 'Unknown'),
-                            'upgrade_status': 'Available',
-                            'firmware_name': newest_firmware.get('name', 'N/A'),
-                            'bundle_type': newest_firmware.get('bundle_type', 'N/A')
-                        }
-                        servers_with_upgrades.append(server_info)
-                        logger.info(f"Found firmware upgrade for {server_name}: {newest_firmware.get('version', 'Unknown')}")
-                
-                except Exception as server_error:
-                    # Log the error but continue processing other servers
-                    logger.warning(f"Error checking firmware for server {server.get('name', 'unknown')}: {str(server_error)}")
+                server_name = server.get('name')
+                if not server_name:
                     continue
+                    
+                # Get current firmware version
+                current_firmware = server.get('firmware', 'Unknown')
+                
+                # Get compatible firmware packages for this server
+                firmware_info = self.get_firmware_for_server(server_name)
+                
+                if isinstance(firmware_info, dict) and "error" in firmware_info:
+                    logger.warning(f"Error getting firmware for server {server_name}: {firmware_info['error']}")
+                    continue
+                    
+                compatible_firmware = firmware_info.get('compatible_firmware', [])
+                
+                if not compatible_firmware:
+                    logger.info(f"No compatible firmware found for server {server_name}")
+                    # Still add the server to the list, but with no available firmware
+                    servers_with_upgrades.append({
+                        'name': server_name,
+                        'model': server.get('model', 'Unknown'),
+                        'current_firmware': current_firmware,
+                        'available_firmware': 'N/A'
+                    })
+                    continue
+                
+                # Find newer firmware versions
+                newer_firmware = []
+                for firmware in compatible_firmware:
+                    firmware_version = firmware.get('version', 'Unknown')
+                    
+                    # Skip if versions are the same or unknown
+                    if firmware_version == current_firmware or firmware_version == 'Unknown' or current_firmware == 'Unknown':
+                        continue
+                    
+                    # Use proper version comparison
+                    comparison_result = self._compare_firmware_versions(firmware_version, current_firmware)
+                    if comparison_result > 0:  # firmware_version > current_firmware
+                        newer_firmware.append(firmware)
+                
+                # If we found newer firmware, add this server to the list
+                if newer_firmware:
+                    # Sort newer firmware by version (newest first)
+                    newer_firmware.sort(key=lambda x: x.get('version', ''), reverse=True)
+                    latest_firmware = newer_firmware[0]
+                    
+                    servers_with_upgrades.append({
+                        'name': server_name,
+                        'model': server.get('model', 'Unknown'),
+                        'current_firmware': current_firmware,
+                        'available_firmware': latest_firmware.get('version', 'Unknown')
+                    })
+                else:
+                    # No newer firmware, but add to list with N/A for available firmware
+                    servers_with_upgrades.append({
+                        'name': server_name,
+                        'model': server.get('model', 'Unknown'),
+                        'current_firmware': current_firmware,
+                        'available_firmware': 'N/A'
+                    })
             
             return servers_with_upgrades
             
@@ -527,7 +527,7 @@ class IntersightClientTool:
             logger.error(f"Error getting servers with firmware upgrades: {str(e)}")
             import traceback
             logger.error(traceback.format_exc())
-            return {"error": str(e)}
+            return []
             
     def get_server_profiles(self) -> List[Dict[str, Any]]:
         """Get list of server profiles from Intersight."""
@@ -1384,21 +1384,35 @@ class IntersightAPI:
         return response
 
     def _format_firmware_upgrade_response(self, servers: List[Dict[str, Any]]) -> str:
+        """Format firmware upgrade information into a readable response."""
         if not servers:
             return "No servers with available firmware upgrades found in your environment."
-
+            
+        # Count servers with actual upgrades
+        servers_with_upgrades = [s for s in servers if s.get('available_firmware') and s.get('available_firmware') != 'N/A']
+        
+        if not servers_with_upgrades:
+            response = "### Firmware Status Check\n\n"
+            response += "All servers in your environment are running the latest available firmware versions. No upgrades are currently needed.\n\n"
+            
+            # Add a summary of current firmware versions
+            response += "### Current Firmware Versions\n\n"
+            response += "| Server Name | Model | Current Firmware |\n"
+            response += "|-------------|-------|------------------|\n"
+            for server in servers:
+                response += f"| {server.get('name', 'N/A')} | {server.get('model', 'N/A')} | {server.get('current_firmware', 'N/A')} |\n"
+            
+            return response
+        
         response = "### Servers with Available Firmware Upgrades\n\n"
         response += "| Server Name | Model | Current Firmware | Available Firmware |\n"
         response += "|-------------|-------|------------------|-------------------|\n"
-
-        # Add all servers to the table in a single list
-        for server in servers:
-            response += f"| {server.get('name', 'N/A')} | {server.get('model', 'N/A')} | {server.get('current_firmware', 'N/A')} | {server.get('available_firmware', 'N/A')} |\n"
-
-        response += "\n\n**Note:** The firmware versions shown are the latest available for each server based on compatibility with the server model. To upgrade, use the Intersight portal to schedule and deploy these firmware updates."
-
-        return response
         
+        for server in servers_with_upgrades:
+            response += f"| {server.get('name', 'N/A')} | {server.get('model', 'N/A')} | {server.get('current_firmware', 'N/A')} | {server.get('available_firmware', 'N/A')} |\n"
+        
+        return response
+
     def _format_server_firmware_response(self, firmware_info: Dict[str, Any]) -> str:
         """Format response for server-specific firmware query."""
         if isinstance(firmware_info, dict) and "error" in firmware_info:

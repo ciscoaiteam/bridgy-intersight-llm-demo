@@ -1,7 +1,7 @@
 Intersight Expert Questions:
 What firmware is running on my servers in my environment?
-What servers have firmware that can be upgraded in my environment? (Needs to be fixed)
-What GPUs are running in my environment?
+What servers have firmware that can be upgraded in my environment?
+What GPUs are running in my environment? (broken)
 
 Nexus Dashboard Expert Questions:
 What is the syslog ip address for my network?
