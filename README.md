@@ -3,43 +3,38 @@
 ![Cisco Intersight Logo](https://storage.googleapis.com/blogs-images-new/ciscoblogs/1/2021/09/Intersight-Icon.png)
 [![Docker Build](https://img.shields.io/badge/docker-build-green?style=flat-square&logo=docker)](https://hub.docker.com/r/amac00/bridgy-ai)
 [![Python Version](https://img.shields.io/badge/python-3.10-blue.svg)](https://www.python.org/downloads/)
-[![CUDA Support](https://img.shields.io/badge/CUDA-12.x-green.svg)](https://developer.nvidia.com/cuda-downloads)
 [![License](https://img.shields.io/badge/License-TBD-yellow.svg)](#license)
 
 
 
-## 🚀 Overview
+## Overview
 
-Cisco Bridgy is an advanced AI assistant designed to provide specialized expertise in Cisco infrastructure, focusing on Intersight, AI Pods, and general Cisco knowledge. Utilizing a sophisticated "Mix of Experts" model, the assistant routes queries to specialized knowledge domains for precise and context-aware responses.
+Cisco Bridgy is an advanced AI assistant designed to provide specialized expertise in Cisco infrastructure, focusing on Intersight, Nexus Dashboard, AI Pods, and general Cisco knowledge. Utilizing a sophisticated "Mix of Experts" model, the assistant routes queries to specialized knowledge domains for precise and context-aware responses.
 
-## ✨ Key Features
+## Key Features
 
 - **Multi-Expert Routing**:
   - Intersight Expert: Server inventory and infrastructure management
+  - Nexus Dashboard Expert: Fabric management and network configuration
   - AI Pods Expert: AI infrastructure and LLM hardware insights
   - General Cisco Knowledge Expert
 
 - **Advanced Technology Stack**:
-  - Retrieval-Augmented Generation (RAG) with FAISS-GPU
-  - Embedding Model: [Specific Embedding Model Name]
-  - Inferencing via Ollama with Gemma2 (9B model)
+  - Retrieval-Augmented Generation (RAG) with FAISS-CPU
+  - Remote LLM Integration with Meta-Llama-3-8B-Instruct
   - LangChain Integration
   - Streamlit-based Web Interface
 
-## 🖥️ System Requirements
-
-### Hardware
-- **GPU**: Nvidia GPU with minimum 18 GB VRAM
-- **CUDA**: Version 12.x
-- **cuDNN**: Version 9+
+## System Requirements
 
 ### Software Prerequisites
 - Python 3.10
 - Internet Connectivity
-- Intersight API Key & PEM 
+- Intersight API Key & PEM
+- Nexus Dashboard credentials (for Nexus Dashboard functionality)
 - LangSmith Key (Optional, for troubleshooting)
 
-## 🛠️ Installation Methods
+## Installation Methods
 
 ### Quick DCloud Installation
 
@@ -53,7 +48,7 @@ For the fastest setup, especially in Cisco DCloud environments, use the `docker_
 ./ai.sh
 
 # Clone the Directory ( You could do just the docker_run.sh file but maybe you want to see what else is in this ) 
-git -clone https://github.com/ciscoaiteam/bridgy-intersight-llm-demo.git
+git clone https://github.com/ciscoaiteam/bridgy-intersight-llm-demo.git
 
 # Input your PAT GIT key, While the repo is public the container is still private. **Org Policy
 echo ghp_### | docker login ghcr.io -u <username> --password-stdin
@@ -80,7 +75,7 @@ git clone https://github.com/ciscoaiteam/bridgy-intersight-llm-demo.git
 
 # Populate the local .env file with your credentials
 # (Create .env file as described in Configuration section)
-
+```
 
 ### 3. Local Installation (Without Container)
 
@@ -88,9 +83,6 @@ For development or environments without Docker:
 
 #### Prerequisites
 - Python 3.10
-- Nvidia GPU with 18GB+ VRAM
-- CUDA 12.x
-- cuDNN 9+
 
 #### Installation Steps
 
@@ -129,90 +121,84 @@ After successful installation via any method, access the application at:
 - `http://localhost:8443` (local access)
 - `http://your_server_ip:8443` (network access)
 
-## 📋 Configuration
+## Configuration
 
 Create a `.env` file with the following variables:
 
 ```
+LANGSMITH_ENDPOINT="https://api.smith.langchain.com"
 LANGSMITH_API_KEY=your_langsmith_api_key
 LANGSMITH_PROJECT=bridgyv2
 INTERSIGHT_API_KEY=your_intersight_api_key_id
+NEXUS_DASHBOARD_URL=your_nexus_dashboard_url
+NEXUS_DASHBOARD_USERNAME=your_nexus_dashboard_username
+NEXUS_DASHBOARD_PASSWORD=your_nexus_dashboard_password
 ```
 
-## 🔍 Verification
+## Verification
 
 Verify your installation by checking:
-1. GPU compatibility
-2. CUDA and cuDNN versions
-3. Successful dependency installations
-4. Proper API key configurations
+1. Successful dependency installations
+2. Proper API key configurations
 
 ```bash
-# Verify Python and torch installation
-python3 -c "import torch; print(torch.cuda.is_available())"
+# Verify Python installation
+python3 -c "import langchain; print('LangChain installed successfully')"
 ```
 
-## 🛡️ Troubleshooting
+## Troubleshooting
 
 ### Common Issues
-- **AI Pod Agent Errors**: 
-  - Typically related to cuDNN or Torch compatibility
-  - Validate installation via Python torch import
+- **API Connection Errors**: 
+  - Check your API keys and credentials in the .env file
+  - Ensure network connectivity to the remote LLM service
+- **Nexus Dashboard Connection Issues**:
+  - Verify the URL format (should include https://)
+  - Check username/password credentials
+  - SSL verification may need to be disabled for self-signed certificates
 - Ensure all dependencies are correctly installed
-- Check GPU drivers and CUDA configuration
 
-## 📂 Project Structure
+## Project Structure
 
 ```
 ├── .streamlit/                # Streamlit configuration
-├── experts/                   # Expert modules
-├── pdf/                       # Documentation PDFs
-├── tools/                     # Utility tools
-├── utils/                     # Utility functions
-├── config.py                  # Application configuration
-└── main.py                    # Main application entry point
+├── bridgyv2-main/            
+│   ├── experts/               # Expert modules
+│   │   ├── router.py          # Query routing logic
+│   │   ├── intersight_expert.py
+│   │   ├── ai_pods_expert.py
+│   │   └── general_expert.py
+│   ├── tools/                 # Utility tools
+│   │   ├── intersight_api.py  # Intersight API integration
+│   │   └── pdf_loader.py      # PDF document loading
+│   ├── utils/                 # Utility functions
+│   └── main.py                # Main application entry point
+├── config/                    # Configuration files
+└── docker_run.sh              # Docker deployment script
 ```
 
-## 👥 Contributors
+## Contributors
 
 - [@amac00](https://github.com/amac00)
 - [@mpduarte](https://github.com/mpduarte)
 
 
-## 💡 Contribute
+## Contribute
 
 Interested in improving Cisco Bridgy? We welcome contributions!
 - Report issues on our GitHub repository
 - Submit pull requests with improvements
 - Reach out to contributors with suggestions or ideas
 
-## 📄 License
+## License
 
 License details to be determined. 
 
-## 🔗 External Resources
+## External Resources
 
 - [Intersight API Documentation](https://intersight.com/apidocs/introduction/apidocs/an/)
+- [Nexus Dashboard Documentation](https://www.cisco.com/c/en/us/products/cloud-systems-management/nexus-dashboard/index.html)
 
 ---
 
 **Note**: This is a technical demonstration project. Features and functionality may change rapidly.
-
-
-## Changing Models
-
-You have two models running in this demo. 
-- Foundational Model 
-- Embedding Model 
-
-To change the Foundational Model you will need to do the following.
-1. Pull the image via updating the local_build_install.sh with the new model
-2. Update all the expert .py's with the new model name. 
-```        
-        self.llm = OllamaLLM(
-            model="gemma2",  # Using local gemma2 model
-            base_url="http://localhost:11434",
-            temperature=0
-        )
-```
-3. 
