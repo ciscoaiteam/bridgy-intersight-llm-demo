@@ -493,9 +493,10 @@ class IntersightClientTool:
                         if firmware_version == current_firmware or firmware_version == 'Unknown' or current_firmware == 'Unknown':
                             continue
                         
-                        # Simple version comparison (in a real implementation, you'd want a more sophisticated version comparison)
-                        # For now, we'll just check if the versions are different and assume newer
-                        newer_firmware.append(firmware)
+                        # Use proper version comparison
+                        comparison_result = self._compare_firmware_versions(firmware_version, current_firmware)
+                        if comparison_result > 0:  # firmware_version > current_firmware
+                            newer_firmware.append(firmware)
                     
                     # If we found newer firmware, add this server to the list
                     if newer_firmware:
@@ -1066,6 +1067,72 @@ class IntersightClientTool:
             import traceback
             logger.error(traceback.format_exc())
             return {"error": str(e)}
+
+    def _compare_firmware_versions(self, version1: str, version2: str) -> int:
+        """
+        Compare two firmware versions.
+        Returns:
+            1 if version1 > version2
+            0 if version1 == version2
+            -1 if version1 < version2
+        """
+        try:
+            # Handle unknown versions
+            if version1 == 'Unknown' or version2 == 'Unknown':
+                return 0
+                
+            # Parse versions - Cisco UCS firmware versions typically follow format like 4.2(3m)
+            # Extract major, minor, and build parts
+            def parse_version(version):
+                # Extract the numeric part before the parenthesis (major.minor)
+                major_minor_match = re.match(r'(\d+\.\d+)', version)
+                major_minor = major_minor_match.group(1) if major_minor_match else "0.0"
+                
+                # Extract the build part inside parentheses
+                build_match = re.search(r'\(([^)]+)\)', version)
+                build = build_match.group(1) if build_match else ""
+                
+                # Split major.minor into separate components
+                major, minor = map(int, major_minor.split('.'))
+                
+                # Process build number which might contain digits and letters
+                # First try to extract just the numeric part
+                build_num_match = re.match(r'(\d+)', build)
+                build_num = int(build_num_match.group(1)) if build_num_match else 0
+                
+                # Extract any suffix (like 'm' in 4.2(3m))
+                build_suffix = build[len(str(build_num)):] if build_num_match else build
+                
+                return (major, minor, build_num, build_suffix)
+            
+            v1_parts = parse_version(version1)
+            v2_parts = parse_version(version2)
+            
+            # Compare major versions
+            if v1_parts[0] != v2_parts[0]:
+                return 1 if v1_parts[0] > v2_parts[0] else -1
+                
+            # Compare minor versions
+            if v1_parts[1] != v2_parts[1]:
+                return 1 if v1_parts[1] > v2_parts[1] else -1
+                
+            # Compare build numbers
+            if v1_parts[2] != v2_parts[2]:
+                return 1 if v1_parts[2] > v2_parts[2] else -1
+                
+            # If we get here, compare build suffixes
+            # This is a simplification - in a real implementation, you'd want more sophisticated suffix comparison
+            if v1_parts[3] != v2_parts[3]:
+                # For simplicity, we'll just use string comparison for suffixes
+                return 1 if v1_parts[3] > v2_parts[3] else -1
+                
+            # If we get here, versions are equal
+            return 0
+            
+        except Exception as e:
+            logger.warning(f"Error comparing firmware versions {version1} and {version2}: {str(e)}")
+            # If we can't compare, assume they're equal
+            return 0
 
 # Update the original IntersightAPI class to use the new client tool and enhanced methods
 class IntersightAPI:
