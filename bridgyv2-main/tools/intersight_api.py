@@ -924,6 +924,149 @@ class IntersightClientTool:
             logger.error(traceback.format_exc())
             return {"error": str(e)}
 
+    def get_server_gpus(self) -> List[Dict[str, Any]]:
+        """Get list of servers with their GPU information from Intersight."""
+        try:
+            # First get all servers to have their names and models
+            servers = self.get_servers()
+            if isinstance(servers, dict) and "error" in servers:
+                return {"error": f"Error fetching servers: {servers['error']}"}
+            
+            # Create a map of server MOIDs to server info for later reference
+            server_moid_map = {}
+            
+            # Get all PCI devices that might be GPUs
+            try:
+                # Try to use the PCI Device API
+                from intersight.api.pci_api import PciApi
+                pci_api_instance = PciApi(self.api_client)
+                
+                # Query for PCI devices
+                pci_response = pci_api_instance.get_pci_device_list()
+                
+                # Process PCI devices to find GPUs
+                gpu_servers = []
+                
+                # Track which servers we've already processed
+                processed_servers = set()
+                
+                # First, try to get the server MOIDs
+                api_instance = ComputeApi(self.api_client)
+                server_response = api_instance.get_compute_physical_summary_list()
+                
+                for server in server_response.results:
+                    server_moid_map[server.moid] = {
+                        'name': server.name,
+                        'model': server.model,
+                        'serial': server.serial
+                    }
+                
+                # Process PCI devices to find GPUs
+                for device in pci_response.results:
+                    # Check if this is a GPU
+                    is_gpu = False
+                    
+                    # GPUs are typically identified as display controllers or have GPU in their name
+                    if hasattr(device, 'device_class') and device.device_class == 'DisplayController':
+                        is_gpu = True
+                    elif hasattr(device, 'model') and any(gpu_keyword in device.model.upper() for gpu_keyword in ['GPU', 'NVIDIA', 'AMD', 'RADEON', 'TESLA', 'QUADRO', 'RTX', 'A100', 'V100', 'T4']):
+                        is_gpu = True
+                    elif hasattr(device, 'vendor') and any(vendor in device.vendor.upper() for vendor in ['NVIDIA', 'AMD']):
+                        is_gpu = True
+                    
+                    if is_gpu and hasattr(device, 'parent') and hasattr(device.parent, 'moid'):
+                        server_moid = device.parent.moid
+                        
+                        # Skip if we've already processed this server
+                        if server_moid in processed_servers:
+                            continue
+                        
+                        # Get server info from our map
+                        server_info = server_moid_map.get(server_moid, {})
+                        if not server_info:
+                            continue
+                        
+                        # Get GPU details
+                        gpu_info = {
+                            'model': device.model if hasattr(device, 'model') else 'Unknown',
+                            'vendor': device.vendor if hasattr(device, 'vendor') else 'Unknown',
+                            'device_id': device.device_id if hasattr(device, 'device_id') else 'Unknown',
+                            'pci_slot': device.pci_slot if hasattr(device, 'pci_slot') else 'Unknown'
+                        }
+                        
+                        # Add to our results
+                        gpu_servers.append({
+                            'name': server_info.get('name', 'Unknown'),
+                            'model': server_info.get('model', 'Unknown'),
+                            'serial': server_info.get('serial', 'Unknown'),
+                            'gpu': gpu_info
+                        })
+                        
+                        # Mark this server as processed
+                        processed_servers.add(server_moid)
+                
+                # If we found GPUs using PCI devices, return the results
+                if gpu_servers:
+                    return gpu_servers
+                
+            except Exception as pci_error:
+                logger.warning(f"Error fetching PCI devices: {str(pci_error)}")
+                logger.warning("Falling back to Graphics Card API...")
+            
+            # If PCI device approach failed or found no GPUs, try the Graphics Card API
+            try:
+                # Try to use the Graphics Card API
+                graphics_response = api_instance.get_compute_graphics_card_list()
+                
+                gpu_servers = []
+                processed_servers = set()
+                
+                for gpu in graphics_response.results:
+                    if hasattr(gpu, 'parent') and hasattr(gpu.parent, 'moid'):
+                        server_moid = gpu.parent.moid
+                        
+                        # Skip if we've already processed this server
+                        if server_moid in processed_servers:
+                            continue
+                        
+                        # Get server info from our map
+                        server_info = server_moid_map.get(server_moid, {})
+                        if not server_info:
+                            continue
+                        
+                        # Get GPU details
+                        gpu_info = {
+                            'model': gpu.model if hasattr(gpu, 'model') else 'Unknown',
+                            'vendor': gpu.vendor if hasattr(gpu, 'vendor') else 'Unknown',
+                            'device_id': gpu.device_id if hasattr(gpu, 'device_id') else 'Unknown',
+                            'controller_id': gpu.controller_id if hasattr(gpu, 'controller_id') else 'Unknown'
+                        }
+                        
+                        # Add to our results
+                        gpu_servers.append({
+                            'name': server_info.get('name', 'Unknown'),
+                            'model': server_info.get('model', 'Unknown'),
+                            'serial': server_info.get('serial', 'Unknown'),
+                            'gpu': gpu_info
+                        })
+                        
+                        # Mark this server as processed
+                        processed_servers.add(server_moid)
+                
+                return gpu_servers
+                
+            except Exception as graphics_error:
+                logger.warning(f"Error fetching graphics cards: {str(graphics_error)}")
+            
+            # If we couldn't get GPU info from either API, return an empty list
+            return []
+            
+        except Exception as e:
+            logger.error(f"Error fetching server GPUs: {str(e)}")
+            import traceback
+            logger.error(traceback.format_exc())
+            return {"error": str(e)}
+
 # Update the original IntersightAPI class to use the new client tool and enhanced methods
 class IntersightAPI:
     def __init__(self):
@@ -954,7 +1097,8 @@ class IntersightAPI:
                 "firmware": ["firmware", "update", "upgrade", "software", "version"],
                 "profile": ["profile", "profiles", "template", "templates", "configuration"],
                 "firmware_upgrade": ["firmware upgrade", "available upgrade", "upgrade available", "need upgrade", "needs upgrade", "firmware update", "have available firmware", "have firmware upgrade", "servers with firmware", "servers with available"],
-                "server_firmware": ["firmware for server", "update server", "server firmware", "available for", "what firmware is available"]
+                "server_firmware": ["firmware for server", "update server", "server firmware", "available for", "what firmware is available"],
+                "gpu": ["gpu", "graphics card", "nvidia", "amd", "video card", "accelerator", "cuda", "graphics processing", "gpus", "graphics cards"]
             }
 
             # Match question to query type
@@ -1057,6 +1201,12 @@ class IntersightAPI:
                 if isinstance(profiles, dict) and "error" in profiles:
                     return f"Error fetching profile information: {profiles['error']}"
                 return self._format_profile_response(profiles)
+
+            elif query_type == "gpu":
+                gpu_servers = self.client.get_server_gpus()
+                if isinstance(gpu_servers, dict) and "error" in gpu_servers:
+                    return f"Error fetching GPU information: {gpu_servers['error']}"
+                return self._format_gpu_response(gpu_servers)
 
             else:
                 return "Please specify what information you'd like to know about your Cisco Intersight infrastructure (servers, network, health status, virtual machines, device connectors, firmware updates, or server profiles)."
@@ -1234,4 +1384,35 @@ class IntersightAPI:
         for firmware in compatible_firmware:
             response += f"| {firmware.get('name', 'N/A')} | {firmware.get('version', 'N/A')} | {firmware.get('bundle_type', 'N/A')} | {firmware.get('platform_type', 'N/A')} |\n"
         
+        return response
+
+    def _format_gpu_response(self, gpu_servers: List[Dict[str, Any]]) -> str:
+        if not gpu_servers:
+            return "No servers with GPUs found in your environment."
+
+        response = "## Servers with GPUs\n\n"
+        response += "| Server Name | Server Model | GPU Model | GPU Vendor |\n"
+        response += "|-------------|-------------|-----------|------------|\n"
+
+        for server in gpu_servers:
+            gpu_info = server.get('gpu', {})
+            response += f"| {server.get('name', 'N/A')} | {server.get('model', 'N/A')} | {gpu_info.get('model', 'N/A')} | {gpu_info.get('vendor', 'N/A')} |\n"
+
+        response += "\n\n### Detailed GPU Information\n\n"
+        for server in gpu_servers:
+            gpu_info = server.get('gpu', {})
+            response += f"**{server.get('name', 'N/A')}**:\n"
+            response += f"- GPU Model: {gpu_info.get('model', 'N/A')}\n"
+            response += f"- GPU Vendor: {gpu_info.get('vendor', 'N/A')}\n"
+            
+            # Add additional details if available
+            if 'device_id' in gpu_info and gpu_info['device_id'] != 'Unknown':
+                response += f"- Device ID: {gpu_info.get('device_id', 'N/A')}\n"
+            if 'pci_slot' in gpu_info and gpu_info['pci_slot'] != 'Unknown':
+                response += f"- PCI Slot: {gpu_info.get('pci_slot', 'N/A')}\n"
+            if 'controller_id' in gpu_info and gpu_info['controller_id'] != 'Unknown':
+                response += f"- Controller ID: {gpu_info.get('controller_id', 'N/A')}\n"
+            
+            response += "\n"
+
         return response
