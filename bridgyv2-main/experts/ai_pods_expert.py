@@ -70,5 +70,6 @@ class AIPodExpert:
             else:
                 # Try to convert the response to a string if it's not already
                 return str(response)
+
         except Exception as e:
             raise Exception(f"AI Pods Expert error: {str(e)}")

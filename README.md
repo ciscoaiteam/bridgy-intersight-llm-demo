@@ -4,7 +4,6 @@
  
 [![Docker Build](https://img.shields.io/badge/docker-build-green?style=flat-square&logo=docker)](https://hub.docker.com/r/amac00/bridgy-ai)
 [![Python Version](https://img.shields.io/badge/python-3.10-blue.svg)](https://www.python.org/downloads/)
-[![CUDA Support](https://img.shields.io/badge/CUDA-12.x-green.svg)](https://developer.nvidia.com/cuda-downloads)
 [![License](https://img.shields.io/badge/License-TBD-yellow.svg)](#license)
 
 ## Overview
@@ -31,7 +30,7 @@ Cisco Bridgy is an advanced AI assistant designed to provide specialized experti
   - Hardware details and specifications
 
 - **Advanced Technology Stack**:
-  - Retrieval-Augmented Generation (RAG) with FAISS-GPU
+  - Remote LLM Integration with Meta-Llama-3-8B-Instruct
   - LangChain Integration
   - Streamlit-based Web Interface
 
@@ -45,8 +44,8 @@ Cisco Bridgy is an advanced AI assistant designed to provide specialized experti
 ### Software Prerequisites
 - Python 3.10 or higher
 - Internet Connectivity
-- Intersight API Key & PEM file
-- Nexus Dashboard credentials (for Nexus Dashboard features)
+- Intersight API Key & PEM
+- Nexus Dashboard credentials (for Nexus Dashboard functionality)
 - LangSmith Key (Optional, for troubleshooting)
 
 ## Installation Methods
@@ -62,7 +61,7 @@ For the fastest setup, especially in Cisco DCloud environments, use the `docker_
 # Run the AI.sh that is deployed to get all the docker / CUDA / Python stuff installed first
 ./ai.sh
 
-# Clone the Directory
+# Clone the Directory ( You could do just the docker_run.sh file but maybe you want to see what else is in this ) 
 git clone https://github.com/ciscoaiteam/bridgy-intersight-llm-demo.git
 
 # Input your PAT GIT key, While the repo is public the container is still private. **Org Policy
@@ -100,6 +99,7 @@ For development or environments without Docker:
 - Nvidia GPU with 18GB+ VRAM
 - CUDA 12.x
 - cuDNN 9+
+- Python 3.10
 
 #### Installation Steps
 
@@ -143,6 +143,7 @@ Create a `.env` file with the following variables:
 
 ```
 # LangSmith Configuration (Optional)
+LANGSMITH_ENDPOINT="https://api.smith.langchain.com"
 LANGSMITH_API_KEY=your_langsmith_api_key
 LANGSMITH_PROJECT=bridgyv2
 
@@ -175,23 +176,21 @@ You can generate these credentials from your Intersight account under Settings >
 ## Verification
 
 Verify your installation by checking:
-1. GPU compatibility
-2. CUDA and cuDNN versions
-3. Successful dependency installations
-4. Proper API key configurations
+1. Successful dependency installations
+2. Proper API key configurations
 
 ```bash
-# Verify Python and torch installation
-python3 -c "import torch; print(torch.cuda.is_available())"
+# Verify Python installation
+python3 -c "import langchain; print('LangChain installed successfully')"
 ```
 
 ## Troubleshooting
 
 ### Common Issues
-- **AI Pod Agent Errors**: 
-  - Typically related to cuDNN or Torch compatibility
-  - Validate installation via Python torch import
 - **Nexus Dashboard Connection Issues**:
+  - Verify the URL format (should include https://)
+  - Check username/password credentials
+  - SSL verification may need to be disabled for self-signed certificates
   - Verify credentials in .env file
   - Check network connectivity to Nexus Dashboard instance
   - Confirm SSL certificate settings
@@ -200,8 +199,10 @@ python3 -c "import torch; print(torch.cuda.is_available())"
   - Check permissions for the API key
 - **Port access issues**: 
   - If you can't access the application from another machine, check your firewall settings to ensure port 8443 is open
+- **API Connection Errors**: 
+  - Check your API keys and credentials in the .env file
+  - Ensure network connectivity to the remote LLM service
 - Ensure all dependencies are correctly installed
-- Check GPU drivers and CUDA configuration
 
 ## Project Structure
 
@@ -259,6 +260,21 @@ The Nexus Dashboard integration provides several key capabilities:
 | NEXUS_DASHBOARD_PASSWORD | Password for Nexus Dashboard | Yes (for Nexus Dashboard) |
 | NEXUS_DASHBOARD_DOMAIN | Domain for Nexus Dashboard (default: local) | No |
 
+=======
+├── bridgyv2-main/            
+│   ├── experts/               # Expert modules
+│   │   ├── router.py          # Query routing logic
+│   │   ├── intersight_expert.py
+│   │   ├── ai_pods_expert.py
+│   │   └── general_expert.py
+│   ├── tools/                 # Utility tools
+│   │   ├── intersight_api.py  # Intersight API integration
+│   │   └── pdf_loader.py      # PDF document loading
+│   ├── utils/                 # Utility functions
+│   └── main.py                # Main application entry point
+├── config/                    # Configuration files
+└── docker_run.sh              # Docker deployment script
+```
 ## Contributors
 
 - [@amac00](https://github.com/amac00)

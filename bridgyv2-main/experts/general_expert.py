@@ -40,5 +40,6 @@ class GeneralExpert:
             else:
                 # Try to convert the response to a string if it's not already
                 return str(response)
+
         except Exception as e:
             raise Exception(f"General Expert error: {str(e)}")
