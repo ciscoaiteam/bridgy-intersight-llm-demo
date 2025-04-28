@@ -5,8 +5,8 @@ import json
 import logging
 from typing import Dict, Any, List, Optional
 
-from langchain.chat_models import ChatOpenAI
-from langchain.schema import HumanMessage, SystemMessage
+from langchain_openai import ChatOpenAI
+from langchain.schema.messages import HumanMessage, SystemMessage
 
 from tools.infrastructure_api import InfrastructureAPI
 
@@ -35,19 +35,19 @@ class InfrastructureExpert:
             logger.error(f"Error initializing Infrastructure Expert: {str(e)}")
             raise
     
-    def process_query(self, query: str) -> str:
+    def get_response(self, question: str) -> str:
         """Process a query related to infrastructure."""
         try:
             # Get the API response
-            api_response = self.api.query(query)
+            api_response = self.api.query(question)
             
             # Create a prompt for the LLM
-            prompt = self._create_prompt(query, api_response)
+            prompt = self._create_prompt(question, api_response)
             
             # Get the LLM response
             response = self.llm([
                 SystemMessage(content=prompt),
-                HumanMessage(content=query)
+                HumanMessage(content=question)
             ])
             
             # Extract just the content from the response
