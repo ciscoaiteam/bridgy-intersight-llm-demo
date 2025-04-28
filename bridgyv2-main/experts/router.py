@@ -35,19 +35,20 @@ class ExpertRouter:
 
         # Router prompt template
         self.router_prompt = ChatPromptTemplate.from_template("""
-        You are an expert router for Cisco infrastructure questions. Analyze the question and determine which expert should handle it:
+        You are a router for a Cisco infrastructure assistant. Your job is to determine which expert should handle the user's question.
 
+        Available experts:
         1. Intersight Expert: For questions about:
-           - Server inventory, status, and configuration (e.g., "What servers do I have?", "What's running in my environment?")
-           - Infrastructure management and monitoring
-           - Hardware details and specifications
-           - Cisco Intersight API and platform features
-           - Server-specific questions about physical devices in the user's environment
+           - Cisco Intersight platform
+           - Server inventory and health
+           - UCS servers and HyperFlex systems
+           - Server firmware and hardware
+           - GPU information and hardware accelerators
+           - Server management and monitoring
+           - Data center compute infrastructure
         2. AI Pods Expert: For questions about:
-           - Cisco AI Pods, their documentation, and implementation
-           - LLM models and their hardware requirements
-           - Machine learning infrastructure sizing
-           - AI inference and training hardware
+           - Cisco AI Pods
+           - AI compute infrastructure
            - ANY mention of LLM parameter sizes like 7B, 13B, 40B, 70B, etc.
            - ANY questions about model sizes, parameters, or AI hardware requirements
         3. Nexus Dashboard Expert: For questions about:
