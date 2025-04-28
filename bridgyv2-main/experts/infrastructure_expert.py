@@ -25,9 +25,9 @@ class InfrastructureExpert:
             
             # Initialize the LLM
             self.llm = ChatOpenAI(
+                api_key="LLM",
                 model="/ai/models/Meta-Llama-3-8B-Instruct/",
                 base_url="http://64.101.169.102:8000/v1",
-                api_key="llm-api-key",
                 temperature=0.0
             )
             
