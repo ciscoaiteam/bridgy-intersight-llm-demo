@@ -317,49 +317,47 @@ class ExpertRouter:
         return any(environment_patterns)
 
     def _is_nexus_dashboard_query(self, query: str) -> bool:
-        query_lower = query.lower().strip()
+        """Check if a query is related to Nexus Dashboard."""
+        query_lower = query.lower()
         
-        nexus_keywords = [
-            "nexus", "dashboard", "fabric", "switch", "switches", "network fabric", 
-            "aci", "apic", "telemetry", "ndfc", "dcnm", "vxlan", "evpn", "bgp"
+        # Check for explicit mentions of Nexus Dashboard
+        if "nexus dashboard" in query_lower or "ndfc" in query_lower:
+            return True
+            
+        # Check for fabric-related queries
+        fabric_patterns = [
+            "fabric" in query_lower,
+            "fabrics" in query_lower and "environment" in query_lower,
+            "vlan" in query_lower,
+            "msd" in query_lower and "association" in query_lower,
+            "syslog" in query_lower and "network" in query_lower
         ]
         
-        if any(keyword in query_lower for keyword in nexus_keywords):
-            general_knowledge_indicators = ["what is", "how does", "explain", "tell me about"]
-            if not any(indicator in query_lower for indicator in general_knowledge_indicators):
-                return True
-                
-        environment_context = [
-            "my" in query_lower and ("network" in query_lower or "fabric" in query_lower),
-            "status" in query_lower and "network" in query_lower,
-            "health" in query_lower and "fabric" in query_lower,
-            "alarm" in query_lower or "alert" in query_lower
-        ]
-        
-        if any(environment_context):
+        if any(fabric_patterns):
             return True
             
         return False
 
     def _is_infrastructure_query(self, query: str) -> bool:
-        query_lower = query.lower().strip()
+        """Check if a query is related to infrastructure across multiple systems."""
+        query_lower = query.lower()
         
-        # Check for queries that explicitly mention both systems
+        # Check for explicit mentions of both systems
         if ("intersight" in query_lower and "nexus" in query_lower) or \
            ("intersight" in query_lower and "dashboard" in query_lower):
             return True
             
-        # Check for queries about switches or network devices in the environment
+        # Check for switch-related queries that might span multiple systems
         switch_patterns = [
             "switches" in query_lower and "environment" in query_lower,
             "switches" in query_lower and "running" in query_lower,
-            "network devices" in query_lower and "environment" in query_lower,
-            "what switches" in query_lower,
-            "which switches" in query_lower,
-            "all switches" in query_lower and not "nexus" in query_lower,
-            "all network devices" in query_lower
+            "network device" in query_lower and "environment" in query_lower
         ]
         
+        # Exclude fabric-related queries as they should go to Nexus Dashboard Expert
+        if "fabric" in query_lower or "vlan" in query_lower:
+            return False
+            
         if any(switch_patterns):
             return True
             
