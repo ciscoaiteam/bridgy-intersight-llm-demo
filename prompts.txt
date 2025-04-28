@@ -2,3 +2,5 @@ Intersight API Based Questions:
 What firmware is running on my servers in my environment?
 What servers have firmware that can be upgraded in my environment? (Needs to be fixed)
 What GPUs are running in my environment?
+
+What switches are running in my environment?

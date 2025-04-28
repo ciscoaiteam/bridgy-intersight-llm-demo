@@ -1358,23 +1358,38 @@ class IntersightAPI:
         if not servers:
             return "No servers with available firmware upgrades found in your environment."
 
+        # Group servers by firmware package
+        firmware_groups = {}
+        for server in servers:
+            firmware_name = server.get('firmware_name', 'Unknown')
+            if firmware_name not in firmware_groups:
+                firmware_groups[firmware_name] = []
+            firmware_groups[firmware_name].append(server)
+
         response = "### Servers with Available Firmware Upgrades\n\n"
-        response += "| Server Name | Model | Serial | Current Firmware | Available Firmware | Status |\n"
-        response += "|-------------|-------|--------|------------------|-------------------|--------|\n"
+        response += "| Server Name | Model | Current Firmware | Available Firmware |\n"
+        response += "|-------------|-------|------------------|-------------------|\n"
 
+        # Add all servers to the table
         for server in servers:
-            upgrade_status = "Upgrade Available"
-            response += f"| {server.get('name', 'N/A')} | {server.get('model', 'N/A')} | {server.get('serial', 'N/A')} | {server.get('current_firmware', 'N/A')} | {server.get('available_firmware', 'N/A')} | {upgrade_status} |\n"
+            response += f"| {server.get('name', 'N/A')} | {server.get('model', 'N/A')} | {server.get('current_firmware', 'N/A')} | {server.get('available_firmware', 'N/A')} |\n"
 
-        response += "\n\n#### Firmware Upgrade Details\n\n"
-        for server in servers:
-            response += f"**{server.get('name', 'N/A')}**:\n"
-            response += f"- Current Version: {server.get('current_firmware', 'N/A')}\n"
-            response += f"- Available Version: {server.get('available_firmware', 'N/A')}\n"
-            response += f"- Firmware Package: {server.get('firmware_name', 'N/A')}\n"
-            response += f"- Bundle Type: {server.get('bundle_type', 'N/A')}\n\n"
+        # Add detailed firmware upgrade information grouped by package
+        response += "\n\n## Firmware Upgrade Details\n"
+        
+        for firmware_name, server_group in firmware_groups.items():
+            available_version = server_group[0].get('available_firmware', 'N/A') if server_group else 'N/A'
+            bundle_type = server_group[0].get('bundle_type', 'N/A') if server_group else 'N/A'
+            
+            response += f"\n### {firmware_name} ({available_version})\n"
+            response += f"**Bundle Type:** {bundle_type}\n\n"
+            response += "| Server Name | Model | Current Firmware | Available Firmware |\n"
+            response += "|-------------|-------|------------------|-------------------|\n"
+            
+            for server in server_group:
+                response += f"| {server.get('name', 'N/A')} | {server.get('model', 'N/A')} | {server.get('current_firmware', 'N/A')} | {server.get('available_firmware', 'N/A')} |\n"
 
-        response += "**Note:** The firmware versions shown are the latest available for each server based on compatibility with the server model. To upgrade, use the Intersight portal to schedule and deploy these firmware updates."
+        response += "\n\n**Note:** The firmware versions shown are the latest available for each server based on compatibility with the server model. To upgrade, use the Intersight portal to schedule and deploy these firmware updates."
 
         return response
         
