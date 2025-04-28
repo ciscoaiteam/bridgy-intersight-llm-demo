@@ -991,9 +991,8 @@ class IntersightClientTool:
                         # Get GPU details
                         gpu_info = {
                             'model': device.model if hasattr(device, 'model') else 'Unknown',
-                            'vendor': device.vendor if hasattr(device, 'vendor') else 'Unknown',
-                            'device_id': device.device_id if hasattr(device, 'device_id') else 'Unknown',
-                            'pci_slot': device.pci_slot if hasattr(device, 'pci_slot') else 'Unknown'
+                            'pci_slot': device.pci_slot if hasattr(device, 'pci_slot') else 'Unknown',
+                            'controller_id': device.controller_id if hasattr(device, 'controller_id') else 'Unknown'
                         }
                         
                         # Add to our results
@@ -1039,8 +1038,7 @@ class IntersightClientTool:
                         # Get GPU details
                         gpu_info = {
                             'model': gpu.model if hasattr(gpu, 'model') else 'Unknown',
-                            'vendor': gpu.vendor if hasattr(gpu, 'vendor') else 'Unknown',
-                            'device_id': gpu.device_id if hasattr(gpu, 'device_id') else 'Unknown',
+                            'pci_slot': gpu.pci_slot if hasattr(gpu, 'pci_slot') else 'Unknown',
                             'controller_id': gpu.controller_id if hasattr(gpu, 'controller_id') else 'Unknown'
                         }
                         
@@ -1401,24 +1399,21 @@ class IntersightAPI:
         if not gpu_servers:
             return "No servers with GPUs found in your environment."
 
-        response = "## Servers with GPUs\n\n"
-        response += "| Server Name | Server Model | GPU Model | GPU Vendor |\n"
-        response += "|-------------|-------------|-----------|------------|\n"
+        response = "### Servers with GPUs\n\n"
+        response += "| Server Name | Server Model | GPU Model |\n"
+        response += "|-------------|-------------|----------|\n"
 
         for server in gpu_servers:
             gpu_info = server.get('gpu', {})
-            response += f"| {server.get('name', 'N/A')} | {server.get('model', 'N/A')} | {gpu_info.get('model', 'N/A')} | {gpu_info.get('vendor', 'N/A')} |\n"
+            response += f"| {server.get('name', 'N/A')} | {server.get('model', 'N/A')} | {gpu_info.get('model', 'N/A')} |\n"
 
-        response += "\n\n### Detailed GPU Information\n\n"
+        response += "\n\n#### Detailed GPU Information\n\n"
         for server in gpu_servers:
             gpu_info = server.get('gpu', {})
             response += f"**{server.get('name', 'N/A')}**:\n"
             response += f"- GPU Model: {gpu_info.get('model', 'N/A')}\n"
-            response += f"- GPU Vendor: {gpu_info.get('vendor', 'N/A')}\n"
             
-            # Add additional details if available
-            if 'device_id' in gpu_info and gpu_info['device_id'] != 'Unknown':
-                response += f"- Device ID: {gpu_info.get('device_id', 'N/A')}\n"
+            # Add PCI slot if available
             if 'pci_slot' in gpu_info and gpu_info['pci_slot'] != 'Unknown':
                 response += f"- PCI Slot: {gpu_info.get('pci_slot', 'N/A')}\n"
             if 'controller_id' in gpu_info and gpu_info['controller_id'] != 'Unknown':
