@@ -44,6 +44,9 @@ class IntersightExpert:
             # Check if this is a firmware-related query for a specific server
             is_firmware_query = any(term in question.lower() for term in ["firmware", "update", "upgrade"])
             
+            # Check if this is a GPU-related query
+            is_gpu_query = any(term in question.lower() for term in ["gpu", "graphics card", "nvidia", "amd", "video card", "accelerator", "cuda", "graphics processing", "gpus", "graphics cards"])
+            
             # Extract server name for firmware queries
             server_name = None
             if is_firmware_query and "server" in question.lower():
@@ -88,6 +91,22 @@ class IntersightExpert:
                     logger.error(f"Error getting firmware directly: {str(firmware_error)}")
                     # Continue with normal flow if direct method fails
             
+            # For GPU queries, directly call the GPU method
+            if is_gpu_query:
+                logger.info(f"Directly handling GPU query")
+                try:
+                    # Get GPU information directly
+                    if hasattr(self.api.client, 'get_server_gpus'):
+                        gpu_servers = self.api.client.get_server_gpus()
+                        if not isinstance(gpu_servers, dict) or "error" not in gpu_servers:
+                            # Use the API's formatting method
+                            api_response = self.api.query(question)
+                            logger.info(f"Generated GPU response")
+                            return api_response
+                except Exception as gpu_error:
+                    logger.error(f"Error getting GPU information directly: {str(gpu_error)}")
+                    # Continue with normal flow if direct method fails
+            
             # Get API response through the normal query method
             api_response = self.api.query(question)
             
@@ -114,9 +133,11 @@ class IntersightExpert:
                 return str(response)
                 
         except Exception as e:
-            logger.error(f"Intersight Expert error: {str(e)}")
-            raise Exception(f"Intersight Expert error: {str(e)}")
-            
+            logger.error(f"Error in IntersightExpert: {str(e)}")
+            import traceback
+            logger.error(traceback.format_exc())
+            return f"Error processing your request: {str(e)}"
+
     def _format_firmware_response(self, firmware_info: dict) -> str:
         """Format firmware information into a readable response."""
         server_name = firmware_info.get("server_name", "N/A")

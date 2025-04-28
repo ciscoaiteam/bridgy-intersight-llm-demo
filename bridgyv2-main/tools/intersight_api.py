@@ -657,12 +657,14 @@ class IntersightClientTool:
                 # First try using the SDK's FirmwareApi
                 from intersight.api.firmware_api import FirmwareApi
                 firmware_api = FirmwareApi(self.api_client)
-                response = firmware_api.get_firmware_distributable_list()
+                
+                # Query for firmware distributables
+                firmware_response = firmware_api.get_firmware_distributable_list()
                 
                 # Convert the response to the format we need
                 all_firmware = []
-                if hasattr(response, 'results'):
-                    for update in response.results:
+                if hasattr(firmware_response, 'results'):
+                    for update in firmware_response.results:
                         firmware = {
                             "name": getattr(update, "name", "N/A"),
                             "version": getattr(update, "version", "N/A"),
@@ -1104,17 +1106,26 @@ class IntersightAPI:
             # Match question to query type
             query_type = None
             
+            logger.info(f"Processing query: {question}")
+            
             # First check for firmware_upgrade as it's more specific than just "firmware"
             if any(keyword in question.lower() for keyword in query_patterns["firmware_upgrade"]):
                 query_type = "firmware_upgrade"
+                logger.info(f"Detected query type: {query_type}")
             # Then check for server_firmware as it's also more specific
             elif any(keyword in question.lower() for keyword in query_patterns["server_firmware"]):
                 query_type = "server_firmware"
+                logger.info(f"Detected query type: {query_type}")
+            # Check for GPU queries
+            elif any(keyword in question.lower() for keyword in query_patterns["gpu"]):
+                query_type = "gpu"
+                logger.info(f"Detected query type: {query_type}")
             # Then check other categories
             else:
                 for category, keywords in query_patterns.items():
-                    if category not in ["firmware_upgrade", "server_firmware"] and any(keyword in question.lower() for keyword in keywords):
+                    if category not in ["firmware_upgrade", "server_firmware", "gpu"] and any(keyword in question.lower() for keyword in keywords):
                         query_type = category
+                        logger.info(f"Detected query type: {query_type}")
                         break
             
             # Check for server-specific firmware query
