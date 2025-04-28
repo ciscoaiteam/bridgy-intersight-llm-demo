@@ -1228,7 +1228,7 @@ class IntersightAPI:
         if not servers:
             return "No servers found in inventory"
 
-        response = "## Server Inventory\n\n"
+        response = "### Server Inventory\n\n"
         response += "| Name | Model | Serial | Power State | Firmware |\n"
         response += "|------|--------|--------|-------------|----------|\n"
 
@@ -1241,7 +1241,7 @@ class IntersightAPI:
         if not elements:
             return "No network elements found"
 
-        response = "## Network Elements\n\n"
+        response = "### Network Elements\n\n"
         response += "| Device ID | Model | Serial | Management IP | Version |\n"
         response += "|-----------|-------|--------|---------------|----------|\n"
 
@@ -1256,9 +1256,9 @@ class IntersightAPI:
             error_msg = alerts[0]['error']
             
             # Create a more detailed error response
-            response = "## Error Retrieving Health Alerts\n\n"
+            response = "### Error Retrieving Health Alerts\n\n"
             response += f"**Error Message:** {error_msg}\n\n"
-            response += "### Troubleshooting Steps:\n\n"
+            response += "#### Troubleshooting Steps:\n\n"
             response += "1. Verify that your Intersight API credentials are correct and have sufficient permissions\n"
             response += "2. Check that your Intersight account has access to view alerts and alarms\n"
             response += "3. Ensure connectivity to the Intersight API service\n"
@@ -1270,9 +1270,9 @@ class IntersightAPI:
         if not alerts:
             return "No health alerts found in your environment. All systems appear to be operating normally."
 
-        response = "## Health Alerts\n\n"
-        response += "| Name | Severity | Description | Created | Status |\n"
-        response += "|------|----------|-------------|---------|--------|\n"
+        response = "### Health Alerts\n\n"
+        response += "| Severity | Description | Affected Object | Created | Status |\n"
+        response += "|----------|-------------|-----------------|---------|--------|\n"
 
         for alert in alerts:
             # Truncate description if too long
@@ -1280,7 +1280,7 @@ class IntersightAPI:
             if len(description) > 50:
                 description = description[:47] + "..."
 
-            response += f"| {alert.get('name', 'N/A')} | {alert.get('severity', 'N/A')} | {description} | {alert.get('created_time', 'N/A')} | {'Acknowledged' if alert.get('acknowledged', False) else 'Active'} |\n"
+            response += f"| {alert.get('severity', 'N/A')} | {description} | {alert.get('affected_object', 'N/A')} | {alert.get('created', 'N/A')} | {'Acknowledged' if alert.get('acknowledged', False) else 'Active'} |\n"
 
         return response
         
@@ -1288,12 +1288,12 @@ class IntersightAPI:
         if not vms:
             return "No virtual machines found"
 
-        response = "## Virtual Machines\n\n"
-        response += "| Name | Power State | Host | CPU | Memory | UUID |\n"
-        response += "|------|------------|------|-----|--------|---------|\n"
+        response = "### Virtual Machines\n\n"
+        response += "| Name | Power State | Host | IP Address | Guest OS |\n"
+        response += "|------|-------------|------|------------|----------|\n"
 
         for vm in vms:
-            response += f"| {vm.get('name', 'N/A')} | {vm.get('power_state', 'N/A')} | {vm.get('host_name', 'N/A')} | {vm.get('cpu', 'N/A')} | {vm.get('memory', 'N/A')} | {vm.get('uuid', 'N/A')} |\n"
+            response += f"| {vm.get('name', 'N/A')} | {vm.get('power_state', 'N/A')} | {vm.get('host', 'N/A')} | {vm.get('ip_address', 'N/A')} | {vm.get('guest_os', 'N/A')} |\n"
 
         return response
         
@@ -1301,12 +1301,12 @@ class IntersightAPI:
         if not devices:
             return "No device connectors found"
 
-        response = "## Device Connectors\n\n"
-        response += "| Device Type | Platform Type | Device Hostname | Connection Status | Connection Reason |\n"
-        response += "|-------------|---------------|-----------------|-------------------|-------------------|\n"
+        response = "### Device Connectors\n\n"
+        response += "| Device ID | Platform | Connection Status | Version |\n"
+        response += "|-----------|----------|-------------------|--------|\n"
 
         for device in devices:
-            response += f"| {device.get('device_type', 'N/A')} | {device.get('platform_type', 'N/A')} | {device.get('device_hostname', 'N/A')} | {device.get('connection_status', 'N/A')} | {device.get('connection_reason', 'N/A')} |\n"
+            response += f"| {device.get('device_id', 'N/A')} | {device.get('platform', 'N/A')} | {device.get('connection_status', 'N/A')} | {device.get('version', 'N/A')} |\n"
 
         return response
         
@@ -1314,7 +1314,7 @@ class IntersightAPI:
         if not firmware:
             return "No firmware updates found"
 
-        response = "## Firmware Updates\n\n"
+        response = "### Available Firmware Updates\n\n"
         response += "| Name | Version | Bundle Type | Platform | Status | Created |\n"
         response += "|------|---------|-------------|----------|--------|--------|\n"
 
@@ -1329,9 +1329,9 @@ class IntersightAPI:
             error_msg = profiles[0]['error']
             
             # Create a more detailed error response
-            response = "## Error Retrieving Server Profiles\n\n"
+            response = "### Error Retrieving Server Profiles\n\n"
             response += f"**Error Message:** {error_msg}\n\n"
-            response += "### Troubleshooting Steps:\n\n"
+            response += "#### Troubleshooting Steps:\n\n"
             response += "1. Verify that your Intersight API credentials are correct and have sufficient permissions\n"
             response += "2. Check that your Intersight account has access to view server profiles\n"
             response += "3. Ensure connectivity to the Intersight API service\n"
@@ -1343,7 +1343,7 @@ class IntersightAPI:
         if not profiles:
             return "No server profiles found in your environment."
 
-        response = "## Server Profiles\n\n"
+        response = "### Server Profiles\n\n"
         response += "| Name | Organization | Status | Assigned Server | Model | Serial |\n"
         response += "|------|--------------|--------|-----------------|-------|--------|\n"
 
@@ -1356,14 +1356,14 @@ class IntersightAPI:
         if not servers:
             return "No servers with available firmware upgrades found in your environment."
 
-        response = "## Servers with Available Firmware Upgrades\n\n"
+        response = "### Servers with Available Firmware Upgrades\n\n"
         response += "| Server Name | Model | Serial | Current Firmware | Available Firmware | Bundle Type |\n"
         response += "|-------------|-------|--------|------------------|-------------------|------------|\n"
 
         for server in servers:
             response += f"| {server.get('name', 'N/A')} | {server.get('model', 'N/A')} | {server.get('serial', 'N/A')} | {server.get('current_firmware', 'N/A')} | {server.get('available_firmware', 'N/A')} | {server.get('bundle_type', 'N/A')} |\n"
 
-        response += "\n\n### Firmware Details\n\n"
+        response += "\n\n#### Firmware Details\n\n"
         for server in servers:
             response += f"**{server.get('name', 'N/A')}**: {server.get('firmware_name', 'N/A')} - {server.get('available_firmware', 'N/A')}\n"
 
@@ -1382,11 +1382,11 @@ class IntersightAPI:
         if not compatible_firmware:
             return f"No compatible firmware updates found for server {server_name} (Model: {server_model}, Current Firmware: {current_firmware})."
         
-        response = f"## Available Firmware Updates for {server_name}\n\n"
+        response = f"### Available Firmware Updates for {server_name}\n\n"
         response += f"**Server Model:** {server_model}\n"
         response += f"**Current Firmware:** {current_firmware}\n\n"
         
-        response += "### Compatible Firmware Packages\n\n"
+        response += "#### Compatible Firmware Packages\n\n"
         response += "| Firmware Name | Version | Bundle Type | Platform |\n"
         response += "|--------------|---------|-------------|----------|\n"
         
@@ -1406,19 +1406,5 @@ class IntersightAPI:
         for server in gpu_servers:
             gpu_info = server.get('gpu', {})
             response += f"| {server.get('name', 'N/A')} | {server.get('model', 'N/A')} | {gpu_info.get('model', 'N/A')} |\n"
-
-        response += "\n\n#### Detailed GPU Information\n\n"
-        for server in gpu_servers:
-            gpu_info = server.get('gpu', {})
-            response += f"**{server.get('name', 'N/A')}**:\n"
-            response += f"- GPU Model: {gpu_info.get('model', 'N/A')}\n"
-            
-            # Add PCI slot if available
-            if 'pci_slot' in gpu_info and gpu_info['pci_slot'] != 'Unknown':
-                response += f"- PCI Slot: {gpu_info.get('pci_slot', 'N/A')}\n"
-            if 'controller_id' in gpu_info and gpu_info['controller_id'] != 'Unknown':
-                response += f"- Controller ID: {gpu_info.get('controller_id', 'N/A')}\n"
-            
-            response += "\n"
 
         return response
