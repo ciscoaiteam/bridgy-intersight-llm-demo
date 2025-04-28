@@ -237,31 +237,30 @@ class ExpertRouter:
                 return "I'm sorry, I encountered an error processing your request.", "System"
 
     def _is_intersight_query(self, query: str) -> bool:
-        query_lower = query.lower().strip()
-
-        if self._is_server_inventory_query(query):
+        """Check if a query is related to Intersight."""
+        query_lower = query.lower()
+        
+        # Check for explicit mentions of Intersight
+        if "intersight" in query_lower:
             return True
-
-        environment_context = [
-            "environment" in query_lower and not query_lower.startswith("what is"),
-            "my" in query_lower and ("servers" in query_lower or "infrastructure" in query_lower),
-            "running" in query_lower and not query_lower.startswith("how"),
-            "status" in query_lower and "server" in query_lower,
-            "health" in query_lower and "infrastructure" in query_lower
+            
+        # Check for server-related queries
+        server_patterns = [
+            "server" in query_lower,
+            "servers" in query_lower,
+            "ucs" in query_lower,
+            "hx" in query_lower,
+            "hyperflex" in query_lower,
+            "blade" in query_lower,
+            "rack" in query_lower and "server" in query_lower,
+            "firmware" in query_lower,
+            "gpu" in query_lower or "gpus" in query_lower,  
+            "hardware" in query_lower
         ]
-
-        if any(environment_context):
+        
+        if any(server_patterns):
             return True
-
-        intersight_keywords = [
-            "intersight", "server", "servers", "ucs", "hardware", "compute", 
-            "blade", "rack", "infrastructure", "inventory", "datacenter"
-        ]
-        if any(keyword in query_lower for keyword in intersight_keywords):
-            general_knowledge_indicators = ["what is", "how does", "explain", "tell me about"]
-            if not any(indicator in query_lower for indicator in general_knowledge_indicators):
-                return True
-
+            
         return False
 
     def _is_ai_pods_query(self, query: str) -> bool:
