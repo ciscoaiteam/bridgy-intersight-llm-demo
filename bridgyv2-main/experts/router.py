@@ -6,6 +6,7 @@ from .intersight_expert import IntersightExpert
 from .ai_pods_expert import AIPodExpert
 from .general_expert import GeneralExpert
 from .nexus_dashboard_expert import NexusDashboardExpert
+from .infrastructure_expert import InfrastructureExpert
 import logging
 from config import setup_langsmith
 
@@ -28,7 +29,8 @@ class ExpertRouter:
             "intersight": IntersightExpert(),
             "ai_pods": AIPodExpert(),
             "general": GeneralExpert(),
-            "nexus_dashboard": NexusDashboardExpert()
+            "nexus_dashboard": NexusDashboardExpert(),
+            "infrastructure": InfrastructureExpert()
         }
 
         # Router prompt template
@@ -40,7 +42,7 @@ class ExpertRouter:
            - Infrastructure management and monitoring
            - Hardware details and specifications
            - Cisco Intersight API and platform features
-           - ANY questions about current servers, network elements, or physical devices in the user's environment
+           - Server-specific questions about physical devices in the user's environment
         2. AI Pods Expert: For questions about:
            - Cisco AI Pods, their documentation, and implementation
            - LLM models and their hardware requirements
@@ -54,12 +56,17 @@ class ExpertRouter:
            - Network fabric management
            - Network device status and health
            - Network automation workflows
-           - Any mention of Nexus switches, fabrics, or dashboard
-        4. General Expert: For general Cisco knowledge questions that don't relate to specific infrastructure
+           - Nexus switches, fabrics, or dashboard-specific questions
+        4. Infrastructure Expert: For questions that span multiple systems:
+           - Questions about both Intersight AND Nexus Dashboard
+           - Questions about "switches" or "network devices" that need data from both systems
+           - Questions that require coordinated information from multiple infrastructure sources
+           - ANY questions about "switches running in my environment" or similar queries that need combined data
+        5. General Expert: For general Cisco knowledge questions that don't relate to specific infrastructure
 
         Question: {question}
 
-        Respond with just the expert name: "intersight", "ai_pods", "nexus_dashboard", or "general"
+        Respond with just the expert name: "intersight", "ai_pods", "nexus_dashboard", "infrastructure", or "general"
         """)
 
         # Create router chain using the new RunnableSequence pattern
@@ -109,6 +116,14 @@ class ExpertRouter:
                     except:
                         return "I'm sorry, I encountered multiple errors trying to process your request.", "System"
 
+            elif expert_choice == "infrastructure":
+                try:
+                    logger.info("Routing to Infrastructure Expert")
+                    return self.experts["infrastructure"].get_response(query), "Infrastructure Expert"
+                except Exception as e:
+                    logger.error(f"Infrastructure Expert error: {str(e)}")
+                    return f"Infrastructure Expert Error: {str(e)}", "System"
+
             else:
                 try:
                     logger.info("Routing to General Expert")
@@ -137,7 +152,7 @@ class ExpertRouter:
                 
             logger.debug(f"Router chain response: {expert_choice}")
 
-            if expert_choice in ["intersight", "ai_pods", "nexus_dashboard", "general"]:
+            if expert_choice in ["intersight", "ai_pods", "nexus_dashboard", "infrastructure", "general"]:
                 return expert_choice
 
             last_words = expert_choice.split()[-5:]
@@ -147,9 +162,15 @@ class ExpertRouter:
                 return "ai_pods"
             elif "nexus_dashboard" in last_words or "nexus dashboard" in ' '.join(last_words):
                 return "nexus_dashboard"
+            elif "infrastructure" in last_words:
+                return "infrastructure"
             elif "general" in last_words:
                 return "general"
 
+            if self._is_infrastructure_query(query):
+                logger.info("Detected infrastructure query via semantic detection")
+                return "infrastructure"
+                
             if self._is_server_inventory_query(query):
                 logger.info("Detected server inventory query via semantic detection")
                 return "intersight"
@@ -162,7 +183,9 @@ class ExpertRouter:
 
         except Exception as e:
             logger.error(f"Error in chain of thought: {str(e)}")
-            if "intersight" in query.lower() or any(word in query.lower() for word in ["server", "servers", "hardware", "datacenter"]):
+            if self._is_infrastructure_query(query):
+                return "infrastructure"
+            elif "intersight" in query.lower() or any(word in query.lower() for word in ["server", "servers", "hardware", "datacenter"]):
                 return "intersight"
             elif "ai pods" in query.lower() or "ai pod" in query.lower() or any(word in query.lower() for word in ["llm", "model", "parameter", "parameters"]) or any(size in query.lower() for size in ["7b", "13b", "40b", "70b", "80b"]):
                 return "ai_pods"
@@ -201,6 +224,12 @@ class ExpertRouter:
                     return f"Note: Could not connect to Nexus Dashboard API. Using general knowledge instead.\n\n{fallback_response}", "General Expert (Fallback)"
                 except:
                     return "I'm sorry, I encountered multiple errors trying to process your request.", "System"
+        elif self._is_infrastructure_query(query):
+            try:
+                return self.experts["infrastructure"].get_response(query), "Infrastructure Expert"
+            except Exception as e:
+                logger.error(f"Fallback Infrastructure expert error: {str(e)}")
+                return f"Infrastructure Expert Error: {str(e)}", "System"
         else:
             try:
                 return self.experts["general"].get_response(query), "General Expert"
@@ -308,6 +337,30 @@ class ExpertRouter:
         ]
         
         if any(environment_context):
+            return True
+            
+        return False
+
+    def _is_infrastructure_query(self, query: str) -> bool:
+        query_lower = query.lower().strip()
+        
+        # Check for queries that explicitly mention both systems
+        if ("intersight" in query_lower and "nexus" in query_lower) or \
+           ("intersight" in query_lower and "dashboard" in query_lower):
+            return True
+            
+        # Check for queries about switches or network devices in the environment
+        switch_patterns = [
+            "switches" in query_lower and "environment" in query_lower,
+            "switches" in query_lower and "running" in query_lower,
+            "network devices" in query_lower and "environment" in query_lower,
+            "what switches" in query_lower,
+            "which switches" in query_lower,
+            "all switches" in query_lower and not "nexus" in query_lower,
+            "all network devices" in query_lower
+        ]
+        
+        if any(switch_patterns):
             return True
             
         return False
