@@ -1,9 +1,12 @@
 from langchain_ollama import OllamaLLM  # Updated import
+from langchain_openai import ChatOpenAI
 from langchain.prompts import ChatPromptTemplate
 from langchain_core.runnables import RunnableSequence
 from .intersight_expert import IntersightExpert
 from .ai_pods_expert import AIPodExpert
 from .general_expert import GeneralExpert
+from .nexus_dashboard_expert import NexusDashboardExpert
+from .infrastructure_expert import InfrastructureExpert
 import logging
 from config import setup_langsmith
 
@@ -14,41 +17,60 @@ setup_langsmith()
 
 class ExpertRouter:
     def __init__(self):
-        # Initialize local Ollama client
         self.llm = OllamaLLM(
-            model="gemma2",  # Using local gemma2 model
+            model="gemma2",  # Using local gemma2al model
             base_url="http://localhost:11434",
-            temperature=0
+            temperature=0.0
         )
 
         # Initialize experts
         self.experts = {
             "intersight": IntersightExpert(),
             "ai_pods": AIPodExpert(),
-            "general": GeneralExpert()
+            "general": GeneralExpert(),
+            "nexus_dashboard": NexusDashboardExpert(),
+            "infrastructure": InfrastructureExpert()
         }
 
         # Router prompt template
         self.router_prompt = ChatPromptTemplate.from_template("""
-        You are an expert router for Cisco infrastructure questions. Analyze the question and determine which expert should handle it:
+        You are a router for a Cisco infrastructure assistant. Your job is to determine which expert should handle the user's question.
 
+        Available experts:
         1. Intersight Expert: For questions about:
-           - Server inventory, status, and configuration (e.g., "What servers do I have?", "What's running in my environment?")
-           - Infrastructure management and monitoring
-           - Hardware details and specifications
-           - Cisco Intersight API and platform features
-           - ANY questions about current servers, network elements, or physical devices in the user's environment
+           - Cisco Intersight platform
+           - Server inventory and health
+           - UCS servers and HyperFlex systems
+           - Server firmware and hardware
+           - GPU information and hardware accelerators
+           - Server management and monitoring
+           - Data center compute infrastructure
+           - ANY questions about "servers running in my environment" or "what servers"
+           - ANY questions about server inventory or listing servers
         2. AI Pods Expert: For questions about:
-           - Cisco AI Pods, their documentation, and implementation
-           - LLM models and their hardware requirements
-           - Machine learning infrastructure sizing
-           - AI inference and training hardware
-           - Any mention of LLM sizes like 7B, 13B, 40B, 70B, etc.
-        3. General Expert: For general Cisco knowledge questions that don't relate to specific infrastructure
+           - Cisco AI Pods
+           - AI compute infrastructure
+           - ANY mention of LLM parameter sizes like 7B, 13B, 40B, 70B, etc.
+           - ANY questions about model sizes, parameters, or AI hardware requirements
+        3. Nexus Dashboard Expert: For questions about:
+           - Cisco Nexus Dashboard platform
+           - Data center networking telemetry and monitoring
+           - Network fabric management
+           - Network device status and health
+           - Network automation workflows
+           - Nexus switches, fabrics, or dashboard-specific questions
+        4. Infrastructure Expert: For questions that span multiple systems:
+           - Questions about both Intersight AND Nexus Dashboard
+           - Questions about "switches" or "network devices" that need data from both systems
+           - Questions that require coordinated information from multiple infrastructure sources
+           - ONLY questions about "switches running in my environment" (not servers)
+        5. General Expert: For general Cisco knowledge questions that don't relate to specific infrastructure
+
+        IMPORTANT: Any question about servers, server inventory, or "what servers are running" should go to the Intersight Expert, NOT the Infrastructure Expert.
 
         Question: {question}
 
-        Respond with just the expert name: "intersight", "ai_pods", or "general"
+        Respond with just the expert name: "intersight", "ai_pods", "nexus_dashboard", "infrastructure", or "general"
         """)
 
         # Create router chain using the new RunnableSequence pattern
@@ -84,6 +106,28 @@ class ExpertRouter:
                     logger.error(f"AI Pods Expert error: {str(e)}")
                     return f"AI Pods Expert Error: {str(e)}", "System"
 
+            elif expert_choice == "nexus_dashboard":
+                try:
+                    logger.info("Routing to Nexus Dashboard Expert")
+                    return self.experts["nexus_dashboard"].get_response(query), "Nexus Dashboard Expert"
+                except Exception as e:
+                    logger.error(f"Nexus Dashboard Expert error: {str(e)}")
+                    try:
+                        fallback_response = self.experts["general"].get_response(
+                            f"The user asked '{query}' about Nexus Dashboard, but I couldn't access the Nexus Dashboard API. Please provide a general answer."
+                        )
+                        return f"Note: Could not connect to Nexus Dashboard API. Using general knowledge instead.\n\n{fallback_response}", "General Expert (Fallback)"
+                    except:
+                        return "I'm sorry, I encountered multiple errors trying to process your request.", "System"
+
+            elif expert_choice == "infrastructure":
+                try:
+                    logger.info("Routing to Infrastructure Expert")
+                    return self.experts["infrastructure"].get_response(query), "Infrastructure Expert"
+                except Exception as e:
+                    logger.error(f"Infrastructure Expert error: {str(e)}")
+                    return f"Infrastructure Expert Error: {str(e)}", "System"
+
             else:
                 try:
                     logger.info("Routing to General Expert")
@@ -99,10 +143,20 @@ class ExpertRouter:
     def _determine_expert_with_cot(self, query: str) -> str:
         try:
             response = self.router_chain.invoke({"question": query})
-            expert_choice = response.strip().lower()
+            
+            # Extract content from response
+            if hasattr(response, 'content'):
+                expert_choice = response.content.strip().lower()
+            elif isinstance(response, dict) and 'content' in response:
+                expert_choice = response['content'].strip().lower()
+            elif isinstance(response, str):
+                expert_choice = response.strip().lower()
+            else:
+                expert_choice = str(response).strip().lower()
+                
             logger.debug(f"Router chain response: {expert_choice}")
 
-            if expert_choice in ["intersight", "ai_pods", "general"]:
+            if expert_choice in ["intersight", "ai_pods", "nexus_dashboard", "infrastructure", "general"]:
                 return expert_choice
 
             last_words = expert_choice.split()[-5:]
@@ -110,21 +164,37 @@ class ExpertRouter:
                 return "intersight"
             elif "ai_pods" in last_words or "ai pods" in ' '.join(last_words):
                 return "ai_pods"
+            elif "nexus_dashboard" in last_words or "nexus dashboard" in ' '.join(last_words):
+                return "nexus_dashboard"
+            elif "infrastructure" in last_words:
+                return "infrastructure"
             elif "general" in last_words:
                 return "general"
 
+            if self._is_infrastructure_query(query):
+                logger.info("Detected infrastructure query via semantic detection")
+                return "infrastructure"
+                
             if self._is_server_inventory_query(query):
                 logger.info("Detected server inventory query via semantic detection")
                 return "intersight"
+                
+            if self._is_nexus_dashboard_query(query):
+                logger.info("Detected Nexus Dashboard query via semantic detection")
+                return "nexus_dashboard"
 
             return "general"
 
         except Exception as e:
             logger.error(f"Error in chain of thought: {str(e)}")
-            if "intersight" in query.lower() or any(word in query.lower() for word in ["server", "servers", "hardware", "datacenter"]):
+            if self._is_infrastructure_query(query):
+                return "infrastructure"
+            elif "intersight" in query.lower() or any(word in query.lower() for word in ["server", "servers", "hardware", "datacenter"]):
                 return "intersight"
-            elif "ai pods" in query.lower():
+            elif "ai pods" in query.lower() or "ai pod" in query.lower() or any(word in query.lower() for word in ["llm", "model", "parameter", "parameters"]) or any(size in query.lower() for size in ["7b", "13b", "40b", "70b", "80b"]):
                 return "ai_pods"
+            elif "nexus" in query.lower() or "dashboard" in query.lower() or any(word in query.lower() for word in ["fabric", "switch", "network", "telemetry"]):
+                return "nexus_dashboard"
             else:
                 return "general"
 
@@ -146,6 +216,24 @@ class ExpertRouter:
                 return self.experts["ai_pods"].get_response(query), "AI Pods Expert"
             except:
                 return "I'm sorry, I encountered an error with the AI Pods expert.", "System"
+        elif self._is_nexus_dashboard_query(query):
+            try:
+                return self.experts["nexus_dashboard"].get_response(query), "Nexus Dashboard Expert"
+            except Exception as e:
+                logger.error(f"Fallback Nexus Dashboard expert error: {str(e)}")
+                try:
+                    fallback_response = self.experts["general"].get_response(
+                        f"The user asked '{query}' about Nexus Dashboard, but I couldn't access the Nexus Dashboard API. Please provide a general answer."
+                    )
+                    return f"Note: Could not connect to Nexus Dashboard API. Using general knowledge instead.\n\n{fallback_response}", "General Expert (Fallback)"
+                except:
+                    return "I'm sorry, I encountered multiple errors trying to process your request.", "System"
+        elif self._is_infrastructure_query(query):
+            try:
+                return self.experts["infrastructure"].get_response(query), "Infrastructure Expert"
+            except Exception as e:
+                logger.error(f"Fallback Infrastructure expert error: {str(e)}")
+                return f"Infrastructure Expert Error: {str(e)}", "System"
         else:
             try:
                 return self.experts["general"].get_response(query), "General Expert"
@@ -153,31 +241,34 @@ class ExpertRouter:
                 return "I'm sorry, I encountered an error processing your request.", "System"
 
     def _is_intersight_query(self, query: str) -> bool:
-        query_lower = query.lower().strip()
-
-        if self._is_server_inventory_query(query):
+        """Check if a query is related to Intersight."""
+        query_lower = query.lower()
+        
+        # Check for explicit mentions of Intersight
+        if "intersight" in query_lower:
             return True
-
-        environment_context = [
-            "environment" in query_lower and not query_lower.startswith("what is"),
-            "my" in query_lower and ("servers" in query_lower or "infrastructure" in query_lower),
-            "running" in query_lower and not query_lower.startswith("how"),
-            "status" in query_lower and "server" in query_lower,
-            "health" in query_lower and "infrastructure" in query_lower
+            
+        # Check for server-related queries
+        server_patterns = [
+            "server" in query_lower,
+            "servers" in query_lower,
+            "what servers" in query_lower,
+            "servers in my environment" in query_lower,
+            "servers are running" in query_lower,
+            "running in my environment" in query_lower and not "switches" in query_lower,
+            "ucs" in query_lower,
+            "hx" in query_lower,
+            "hyperflex" in query_lower,
+            "blade" in query_lower,
+            "rack" in query_lower and "server" in query_lower,
+            "firmware" in query_lower,
+            "gpu" in query_lower or "gpus" in query_lower,
+            "hardware" in query_lower
         ]
-
-        if any(environment_context):
+        
+        if any(server_patterns):
             return True
-
-        intersight_keywords = [
-            "intersight", "server", "servers", "ucs", "hardware", "compute", 
-            "blade", "rack", "infrastructure", "inventory", "datacenter"
-        ]
-        if any(keyword in query_lower for keyword in intersight_keywords):
-            general_knowledge_indicators = ["what is", "how does", "explain", "tell me about"]
-            if not any(indicator in query_lower for indicator in general_knowledge_indicators):
-                return True
-
+            
         return False
 
     def _is_ai_pods_query(self, query: str) -> bool:
@@ -231,3 +322,100 @@ class ExpertRouter:
         ]
 
         return any(environment_patterns)
+
+    def _is_nexus_dashboard_query(self, query: str) -> bool:
+        """Check if a query is related to Nexus Dashboard."""
+        query_lower = query.lower()
+        
+        # Check for explicit mentions of Nexus Dashboard
+        if "nexus dashboard" in query_lower or "ndfc" in query_lower:
+            return True
+            
+        # Check for fabric-related queries
+        fabric_patterns = [
+            "fabric" in query_lower,
+            "fabrics" in query_lower and "environment" in query_lower,
+            "vlan" in query_lower,
+            "msd" in query_lower and "association" in query_lower,
+            "syslog" in query_lower and "network" in query_lower,
+            "fabrics" in query_lower and "connected" in query_lower,
+            "fabric" in query_lower and "connected" in query_lower,
+            "multisite" in query_lower,
+            "multi-site" in query_lower,
+            "fabrics" in query_lower and "via multisite" in query_lower
+        ]
+        
+        # Check for switch configuration comparison queries
+        switch_config_patterns = [
+            "compare" in query_lower and "switch" in query_lower and "config" in query_lower,
+            "compare" in query_lower and "switch" in query_lower and "configuration" in query_lower,
+            "difference" in query_lower and "switch" in query_lower and "config" in query_lower,
+            "switch" in query_lower and "network configuration" in query_lower,
+            "switch configuration" in query_lower
+        ]
+        
+        if any(fabric_patterns) or any(switch_config_patterns):
+            return True
+            
+        return False
+
+    def _is_infrastructure_query(self, query: str) -> bool:
+        """Check if a query is related to infrastructure across multiple systems."""
+        query_lower = query.lower()
+        
+        # Check for explicit mentions of both systems
+        if ("intersight" in query_lower and "nexus" in query_lower) or \
+           ("intersight" in query_lower and "dashboard" in query_lower):
+            return True
+            
+        # Check for switch-related queries that might span multiple systems
+        switch_patterns = [
+            "switches" in query_lower and "environment" in query_lower,
+            "switches" in query_lower and "running" in query_lower,
+            "network device" in query_lower and "environment" in query_lower
+        ]
+        
+        # Exclude fabric-related queries as they should go to Nexus Dashboard Expert
+        if "fabric" in query_lower or "vlan" in query_lower:
+            return False
+            
+        # Exclude server-related queries as they should go to Intersight Expert
+        if "server" in query_lower or "servers" in query_lower or "firmware" in query_lower or "gpu" in query_lower:
+            return False
+            
+        if any(switch_patterns):
+            return True
+            
+        return False
+
+    def get_response(self, question: str) -> str:
+        try:
+            # Determine which expert should handle this question
+            expert_name = self._route_question(question)
+            logger.info(f"Chain of thought selected: {expert_name}")
+            
+            # Route to the appropriate expert
+            logger.info(f"Routing to {expert_name.replace('_', ' ').title()} Expert")
+            expert = self.experts[expert_name]
+            response = expert.get_response(question)
+            
+            # Extract just the content from the response if needed
+            if hasattr(response, 'content'):
+                return response.content
+            elif isinstance(response, dict) and 'content' in response:
+                return response['content']
+            elif isinstance(response, str):
+                return response
+            else:
+                # Try to convert the response to a string if it's not already
+                return str(response)
+        except Exception as e:
+            logger.error(f"{expert_name.replace('_', ' ').title()} Expert error: {str(e)}")
+            
+            # Fall back to general expert if specific expert fails
+            logger.info("Falling back to General Expert due to error")
+            try:
+                return self.experts["general"].get_response(question)
+            except Exception as fallback_error:
+                logger.error(f"Fallback to General Expert also failed: {str(fallback_error)}")
+                return f"I'm sorry, but I encountered an error while processing your question: {str(e)}"
