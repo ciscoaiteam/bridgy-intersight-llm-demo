@@ -5,7 +5,7 @@ import tempfile
 from langchain.text_splitter import RecursiveCharacterTextSplitter
 from langchain_community.document_loaders import PyPDFLoader
 from langchain_community.vectorstores import FAISS
-#from langchain.embeddings import HuggingFaceEmbeddings  # Updated to use local embeddings
+# from langchain.embeddings import HuggingFaceEmbeddings  # Updated to use local embeddings
 # from langchain_huggingface import HuggingFaceEmbeddings # Updated to use local embeddings
 from langchain_community.embeddings import HuggingFaceEmbeddings
 
@@ -48,7 +48,7 @@ class PDFLoader:
             logger.info(f"Created {len(splits)} document chunks for vectorization")
 
             # Create vector store using local embeddings
-            embeddings = HuggingFaceEmbeddings(model_name="BAAI/bge-base-en-v1.5", encode_kwargs={"normalize_embeddings": True})
+            embeddings = HuggingFaceEmbeddings(model_name="sentence-transformers/all-MiniLM-L6-v2", encode_kwargs={"normalize_embeddings": True})
             self.vector_store = FAISS.from_documents(splits, embeddings)
             logger.info("Vector store successfully created with real PDF content")
 

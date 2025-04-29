@@ -10,19 +10,19 @@ CONFIG_DIR="$INSTALL_DIR/config"
 ENV_FILE="$CONFIG_DIR/.env"
 PEM_FILE="$CONFIG_DIR/intersight.pem"
 IMAGE_NAME="bridgyv2-app"
-REPO_URL="https://$GH_PAT@github.com/AMac00/bridgy.git"
+REPO_URL="https://github.com/ciscoaiteam/bridgy-intersight-llm-demo.git"
 
 
 # 1. Clone or update repo using token
-if [ ! -d "$INSTALL_DIR/.git" ]; then
-  echo "[+] Cloning Bridgy repo..."
-  git clone "$REPO_URL" "$INSTALL_DIR"
-else
-  echo "[i] Bridgy repo already exists at $INSTALL_DIR"
-  echo "[+] Pulling latest changes..."
-  cd "$INSTALL_DIR"
-  git pull "$REPO_URL"
-fi
+#if [ ! -d "$INSTALL_DIR/.git" ]; then
+#  echo "[+] Cloning Bridgy repo..."
+#  git clone "$REPO_URL" "$INSTALL_DIR"
+#else
+#  echo "[i] Bridgy repo already exists at $INSTALL_DIR"
+#  echo "[+] Pulling latest changes..."
+#  cd "$INSTALL_DIR"
+#  git pull "$REPO_URL"
+#fi
 
 cd "$INSTALL_DIR"
 
@@ -83,7 +83,13 @@ fi
 SHELL_RC="$HOME/.bashrc"
 [ -n "$ZSH_VERSION" ] && SHELL_RC="$HOME/.zshrc"
 
-ALIAS_CMD="alias bridgy-start='docker run --rm -it --gpus all -v $CONFIG_DIR:/config --env-file /config/.env -p 8443:8443 $IMAGE_NAME'"
+ARCH=$(uname -m) && \
+    if [ "$ARCH" = "x86_64" ]; then \
+        ALIAS_CMD="alias bridgy-start='docker run --rm -it --gpus all -v ./config:/config -p 8443:8443  --env-file ./config/.env $IMAGE_NAME'"
+    else \
+        ALIAS_CMD="alias bridgy-start='docker run --rm -it -v ./config:/config -p 8443:8443  --env-file ./config/.env $IMAGE_NAME'"
+    fi
+
 if ! grep -Fq "alias bridgy-start=" "$SHELL_RC"; then
   echo "$ALIAS_CMD" >> "$SHELL_RC"
   echo "[+] Added 'bridgy-start' alias to $SHELL_RC"

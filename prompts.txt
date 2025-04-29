@@ -1,0 +1,19 @@
+Intersight Expert Questions:
+What Servers are running in my environment?
+What firmware is running on my servers in my environment? 
+What servers have firmware that can be upgraded in my environment?
+What GPUs are running in my environment?
+
+Nexus Dashboard Expert Questions:
+What is the syslog ip address for my network?
+What fabrics am i running in my environment?
+What MSD Associations are there in my fabric?
+What Fabrics are connected to another Fabric via Multisite?
+
+Infrastructure Expert Questions:
+What switches are running in my environment?
+
+Pending Testing:
+Show me the network configuration for Switch1 (need Switches online)
+Compare switch configurations between Switch1 and Switch2 (need Switches online)
+What are the differences in configuration between Switch1 and Switch2 (need Switches online)?
