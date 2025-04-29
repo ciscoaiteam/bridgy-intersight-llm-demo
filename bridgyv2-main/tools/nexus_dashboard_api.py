@@ -357,6 +357,51 @@ class NexusDashboardAPI:
                 logger.debug("Querying all switches/devices in NDFC")
                 all_switches = self.get_all_switches()
                 response_data["switches"] = all_switches
+            
+            # Check if the question is about comparing switch configurations
+            if any(term in question_lower for term in ["compare", "comparison", "difference", "differences"]) and any(term in question_lower for term in ["config", "configuration", "settings"]) and "switch" in question_lower:
+                logger.debug("Detected request to compare switch configurations")
+                
+                # Try to extract switch names or IDs from the question
+                import re
+                
+                # Look for patterns like "compare switch X and Y" or "compare X with Y"
+                switch_names = re.findall(r'switch\s+([a-zA-Z0-9_\-\.]+)', question_lower)
+                if len(switch_names) < 2:
+                    # Try alternative patterns
+                    switch_names = re.findall(r'compare\s+([a-zA-Z0-9_\-\.]+)\s+(?:and|with|to)\s+([a-zA-Z0-9_\-\.]+)', question_lower)
+                    if switch_names and isinstance(switch_names[0], tuple) and len(switch_names[0]) >= 2:
+                        switch_names = list(switch_names[0])
+                
+                if len(switch_names) >= 2:
+                    logger.debug(f"Extracted switch names for comparison: {switch_names[0]} and {switch_names[1]}")
+                    comparison_result = self.compare_switch_configs(switch_names[0], switch_names[1])
+                    response_data["switch_config_comparison"] = comparison_result
+                else:
+                    logger.debug("Could not extract switch names from the question")
+                    response_data["switch_config_comparison"] = {
+                        "error": "Could not identify which switches to compare. Please specify the switch names or IDs clearly.",
+                        "example": "Example: 'Compare switch configurations between Switch1 and Switch2'"
+                    }
+            
+            # Check if the question is about a specific switch configuration
+            elif any(term in question_lower for term in ["config", "configuration", "settings"]) and "switch" in question_lower:
+                logger.debug("Detected request for switch configuration")
+                
+                # Try to extract switch name or ID from the question
+                import re
+                switch_names = re.findall(r'switch\s+([a-zA-Z0-9_\-\.]+)', question_lower)
+                
+                if switch_names:
+                    logger.debug(f"Extracted switch name: {switch_names[0]}")
+                    switch_config = self.get_switch_config(switch_names[0])
+                    response_data["switch_config"] = switch_config
+                else:
+                    logger.debug("Could not extract switch name from the question")
+                    response_data["switch_config"] = {
+                        "error": "Could not identify which switch to get configuration for. Please specify the switch name or ID clearly.",
+                        "example": "Example: 'Get configuration for Switch1'"
+                    }
                 
             # Format the response as a JSON string
             return json.dumps(response_data, indent=2)
@@ -535,3 +580,150 @@ class NexusDashboardAPI:
         except Exception as e:
             logger.error(f"Error getting switches from NDFC: {str(e)}")
             return {"error": f"Exception while retrieving switches from NDFC: {str(e)}"}
+
+    def get_switch_config(self, switch_id_or_name):
+        """Get configuration for a specific switch from Nexus Dashboard.
+        
+        Args:
+            switch_id_or_name: The switch ID, name, or IP address to get configuration for
+            
+        Returns:
+            Dictionary containing the switch configuration details
+        """
+        try:
+            # First, try to find the switch in the inventory to get its ID if a name was provided
+            switch_id = switch_id_or_name
+            if not switch_id_or_name.isdigit():  # If it's not a numeric ID, try to find by name or IP
+                logger.debug(f"Looking up switch ID for: {switch_id_or_name}")
+                all_switches = self.get_all_switches()
+                
+                if isinstance(all_switches, dict) and "switches" in all_switches:
+                    for switch in all_switches["switches"]:
+                        if (switch.get("deviceName", "").lower() == switch_id_or_name.lower() or 
+                            switch.get("ipAddress", "") == switch_id_or_name):
+                            # Found the switch, use its ID for the config request
+                            if "serialNumber" in switch:
+                                switch_id = switch["serialNumber"]
+                                logger.debug(f"Found switch ID: {switch_id} for {switch_id_or_name}")
+                                break
+                
+            # Endpoint to get switch configuration
+            endpoint = f"/appcenter/cisco/ndfc/api/v1/lan-fabric/rest/inventory/getconfigs/{switch_id}"
+            logger.debug(f"Getting configuration for switch ID: {switch_id}")
+            result = self._make_request("GET", endpoint)
+            
+            # If we got a successful response, return it
+            if not (isinstance(result, dict) and result.get("error")):
+                logger.debug(f"Successfully retrieved configuration for switch: {switch_id}")
+                
+                # Process the configuration data
+                if isinstance(result, dict):
+                    # Return a structured view of the configuration
+                    return {
+                        "switch_id": switch_id,
+                        "switch_name": switch_id_or_name,
+                        "configuration": result
+                    }
+                else:
+                    return {
+                        "switch_id": switch_id,
+                        "switch_name": switch_id_or_name,
+                        "configuration": str(result)
+                    }
+            else:
+                logger.error(f"Failed to retrieve configuration for switch {switch_id}: {result.get('error', 'Unknown error')}")
+                
+                # Try an alternative endpoint if the first one failed
+                alternative_endpoint = f"/appcenter/cisco/ndfc/api/v1/lan-fabric/rest/control/switches/{switch_id}/config"
+                logger.debug(f"Trying alternative endpoint for switch config: {alternative_endpoint}")
+                alt_result = self._make_request("GET", alternative_endpoint)
+                
+                if not (isinstance(alt_result, dict) and alt_result.get("error")):
+                    logger.debug(f"Successfully retrieved configuration from alternative endpoint")
+                    return {
+                        "switch_id": switch_id,
+                        "switch_name": switch_id_or_name,
+                        "configuration": alt_result
+                    }
+                
+                return {"error": f"Failed to retrieve configuration for switch {switch_id_or_name}", "details": result.get("error", "Unknown error")}
+        except Exception as e:
+            logger.error(f"Error getting switch configuration: {str(e)}")
+            return {"error": f"Exception while retrieving switch configuration: {str(e)}"}
+
+    def compare_switch_configs(self, switch1_id_or_name, switch2_id_or_name):
+        """Compare configurations between two switches.
+        
+        Args:
+            switch1_id_or_name: The ID, name, or IP of the first switch
+            switch2_id_or_name: The ID, name, or IP of the second switch
+            
+        Returns:
+            Dictionary containing the comparison results
+        """
+        try:
+            logger.debug(f"Comparing configurations between {switch1_id_or_name} and {switch2_id_or_name}")
+            
+            # Get configurations for both switches
+            switch1_config = self.get_switch_config(switch1_id_or_name)
+            switch2_config = self.get_switch_config(switch2_id_or_name)
+            
+            # Check if we got valid configurations
+            if "error" in switch1_config:
+                return {"error": f"Failed to get configuration for first switch: {switch1_config.get('error', 'Unknown error')}"}
+            
+            if "error" in switch2_config:
+                return {"error": f"Failed to get configuration for second switch: {switch2_config.get('error', 'Unknown error')}"}
+            
+            # Compare the configurations
+            comparison_result = {
+                "switch1": {
+                    "id": switch1_config.get("switch_id"),
+                    "name": switch1_config.get("switch_name")
+                },
+                "switch2": {
+                    "id": switch2_config.get("switch_id"),
+                    "name": switch2_config.get("switch_name")
+                },
+                "differences": {},
+                "similarities": {}
+            }
+            
+            # Get the configuration sections from both switches
+            config1 = switch1_config.get("configuration", {})
+            config2 = switch2_config.get("configuration", {})
+            
+            # Compare configuration sections
+            all_keys = set(config1.keys()).union(set(config2.keys()))
+            
+            for key in all_keys:
+                # If the key exists in both configs
+                if key in config1 and key in config2:
+                    # If the values are the same
+                    if config1[key] == config2[key]:
+                        comparison_result["similarities"][key] = config1[key]
+                    else:
+                        comparison_result["differences"][key] = {
+                            "switch1": config1[key],
+                            "switch2": config2[key]
+                        }
+                # If the key only exists in config1
+                elif key in config1:
+                    comparison_result["differences"][key] = {
+                        "switch1": config1[key],
+                        "switch2": "Not configured"
+                    }
+                # If the key only exists in config2
+                else:
+                    comparison_result["differences"][key] = {
+                        "switch1": "Not configured",
+                        "switch2": config2[key]
+                    }
+            
+            return comparison_result
+            
+        except Exception as e:
+            logger.error(f"Error comparing switch configurations: {str(e)}")
+            import traceback
+            logger.error(f"Traceback: {traceback.format_exc()}")
+            return {"error": f"Exception while comparing switch configurations: {str(e)}"}

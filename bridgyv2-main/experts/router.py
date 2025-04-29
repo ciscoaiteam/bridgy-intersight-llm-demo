@@ -346,7 +346,16 @@ class ExpertRouter:
             "fabrics" in query_lower and "via multisite" in query_lower
         ]
         
-        if any(fabric_patterns):
+        # Check for switch configuration comparison queries
+        switch_config_patterns = [
+            "compare" in query_lower and "switch" in query_lower and "config" in query_lower,
+            "compare" in query_lower and "switch" in query_lower and "configuration" in query_lower,
+            "difference" in query_lower and "switch" in query_lower and "config" in query_lower,
+            "switch" in query_lower and "network configuration" in query_lower,
+            "switch configuration" in query_lower
+        ]
+        
+        if any(fabric_patterns) or any(switch_config_patterns):
             return True
             
         return False
