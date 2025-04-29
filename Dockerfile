@@ -9,6 +9,7 @@ RUN apt-get update && apt-get install -y \
     ca-certificates software-properties-common \
     && rm -rf /var/lib/apt/lists/*
 
+# Conditionally install CUDA toolkit only on x86_64
 RUN ARCH=$(uname -m) && \
     if [ "$ARCH" = "x86_64" ]; then \
         apt-get update && \
@@ -23,48 +24,40 @@ RUN ARCH=$(uname -m) && \
         echo "Not running on x86_64 (detected: $ARCH), skipping CUDA setup."; \
     fi
 
-
 # Install Ollama
 RUN curl -fsSL https://ollama.com/install.sh | sh
 
-# Add Ollama to the PATH so it's available in entrypoint.sh
+# Add Ollama to the PATH
 ENV PATH="/root/.ollama/bin:${PATH}"
 
-# Set environment variables - properly initialize LD_LIBRARY_PATH
-RUN ARCH=$(uname -m) && \
-    if [ "$ARCH" = "x86_64" ]; then \
-        ENV PATH=/usr/local/cuda/bin:${PATH} && \
-        ENV LD_LIBRARY_PATH=/usr/local/cuda/lib64:${LD_LIBRARY_PATH:-} \
-    else \
-        echo "Not running on x86_64 (detected: $ARCH), skipping CUDA setup."; \
-    fi
+# Set CUDA paths only if running on x86_64 — safe to always define (won’t error if not used)
+ENV PATH="/usr/local/cuda/bin:${PATH}"
+ENV LD_LIBRARY_PATH="/usr/local/cuda/lib64:${LD_LIBRARY_PATH}"
 
-# Point Ollama to /config/ollama for model storage
+# Configure Ollama model storage
 RUN mkdir -p /config/ollama
 ENV OLLAMA_MODELS=/config/ollama
 
-# Create working directory
+# Set working directory
 WORKDIR /app
 
-# Copy your project
+# Copy project files
 COPY ./bridgyv2-main /app/bridgyv2-main
 COPY ./entrypoint.sh /app/entrypoint.sh
 
+# Set up Python venv and conditionally install GPU or CPU torch packages
 RUN ARCH=$(uname -m) && \
+    python3.10 -m venv /app/bridgyv2-main/venv && \
+    chmod -R +x /app/bridgyv2-main/venv/bin && \
+    /app/bridgyv2-main/venv/bin/python -m pip install --upgrade pip && \
     if [ "$ARCH" = "x86_64" ]; then \
-        echo "Running on x86_64, executing CUDA-related commands..." && \
-        python3.10 -m venv /app/bridgyv2-main/venv && \
-        chmod -R +x /app/bridgyv2-main/venv/bin && \
-        /app/bridgyv2-main/venv/bin/python -m pip install --upgrade pip && \
+        echo "Running on x86_64, installing CUDA version of torch..." && \
         rm -rf /usr/lib/x86_64-linux-gnu/libcudnn* /usr/local/cuda/lib64/libcudnn* && \
         /app/bridgyv2-main/venv/bin/python -m pip install torch==2.2.1+cu121 --index-url https://download.pytorch.org/whl/cu121 && \
         /app/bridgyv2-main/venv/bin/python -m pip install -r /app/bridgyv2-main/requirements.txt && \
         /app/bridgyv2-main/venv/bin/python -m pip install -r /app/bridgyv2-main/gpurequirements.txt; \
     else \
-        echo "Not running on x86_64 (detected: $ARCH), skipping CUDA-related commands..." && \
-        python3.10 -m venv /app/bridgyv2-main/venv && \
-        chmod -R +x /app/bridgyv2-main/venv/bin && \
-        /app/bridgyv2-main/venv/bin/python -m pip install --upgrade pip && \
+        echo "Not running on x86_64, installing CPU-only packages..." && \
         /app/bridgyv2-main/venv/bin/python -m pip install torch==2.2.1 && \
         /app/bridgyv2-main/venv/bin/python -m pip install -r /app/bridgyv2-main/requirements.txt; \
     fi
