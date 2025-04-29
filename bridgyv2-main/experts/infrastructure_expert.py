@@ -6,6 +6,7 @@ import logging
 from typing import Dict, Any, List, Optional
 
 from langchain_openai import ChatOpenAI
+from langchain_ollama import OllamaLLM
 from langchain.schema.messages import HumanMessage, SystemMessage
 
 from tools.infrastructure_api import InfrastructureAPI
