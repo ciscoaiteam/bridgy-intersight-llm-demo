@@ -1167,6 +1167,17 @@ class IntersightAPI:
             
         try:
             question_lower = question.lower()
+            logger.info(f"Processing query: {question}")
+            
+            # Explicitly check for firmware upgrade queries first (most specific)
+            if ("firmware" in question_lower and any(pattern in question_lower for pattern in [
+                "upgrade", "can be upgraded", "available upgrade", "that can be upgraded",
+                "newer firmware", "update firmware", "need upgrade", "needs upgrade"
+            ])) or "what servers have firmware that can be upgraded" in question_lower:
+                logger.info("Processing firmware upgrade query")
+                upgrade_data = self.client.get_servers_with_firmware_upgrades()
+                logger.info(f"Firmware upgrade data: {len(upgrade_data)} servers")
+                return self._format_firmware_upgrade_response(upgrade_data)
             
             # Check for server inventory queries
             if any(pattern in question_lower for pattern in [
@@ -1175,18 +1186,8 @@ class IntersightAPI:
             ]):
                 return self._format_servers_response(self.client.get_servers())
                 
-            # Check for firmware queries
+            # Check for general firmware queries
             if "firmware" in question_lower:
-                # Check for firmware upgrade queries
-                if any(pattern in question_lower for pattern in [
-                    "upgrade", "can be upgraded", "available upgrade", 
-                    "newer firmware", "update firmware", "that can be upgraded"
-                ]):
-                    logger.info("Processing firmware upgrade query")
-                    upgrade_data = self.client.get_servers_with_firmware_upgrades()
-                    logger.info(f"Firmware upgrade data: {len(upgrade_data)} servers")
-                    return self._format_firmware_upgrade_response(upgrade_data)
-                # General firmware query
                 return self._format_firmware_response(self.client.get_firmware_status())
             
             # Check for GPU queries
