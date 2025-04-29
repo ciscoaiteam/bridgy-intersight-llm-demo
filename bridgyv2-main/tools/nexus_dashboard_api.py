@@ -402,6 +402,41 @@ class NexusDashboardAPI:
                         "error": "Could not identify which switch to get configuration for. Please specify the switch name or ID clearly.",
                         "example": "Example: 'Get configuration for Switch1'"
                     }
+            
+            # Check if the question is about a specific device by serial number or model
+            elif any(term in question_lower for term in ["ip", "address", "addresses", "information", "details"]) and any(pattern in question_lower for pattern in ["serial", "model", "device", "switch"]):
+                logger.debug("Detected request for device information by serial number or model")
+                
+                # Try to extract serial number from the question
+                import re
+                
+                # Look for patterns like "serial number X" or text in parentheses which might be a serial
+                serial_patterns = [
+                    r'serial\s+(?:number\s+)?([a-zA-Z0-9]+)',  # "serial number ABC123"
+                    r'serial\s*:\s*([a-zA-Z0-9]+)',            # "serial: ABC123"
+                    r'serial\s*=\s*([a-zA-Z0-9]+)',            # "serial=ABC123"
+                    r'\(([a-zA-Z0-9]+)\)',                     # "(ABC123)"
+                    r'device\s+([a-zA-Z0-9\-]+)',              # "device N9K-C9300v"
+                    r'switch\s+([a-zA-Z0-9\-]+)'               # "switch N9K-C9300v"
+                ]
+                
+                serial_number = None
+                for pattern in serial_patterns:
+                    matches = re.findall(pattern, question_lower)
+                    if matches:
+                        serial_number = matches[0]
+                        logger.debug(f"Extracted serial/model: {serial_number}")
+                        break
+                
+                if serial_number:
+                    device_info = self.get_device_by_serial(serial_number)
+                    response_data["device_info"] = device_info
+                else:
+                    logger.debug("Could not extract serial number from the question")
+                    response_data["device_info"] = {
+                        "error": "Could not identify which device to get information for. Please specify the serial number or model clearly.",
+                        "example": "Example: 'What is the IP address of device with serial number ABC123?'"
+                    }
                 
             # Format the response as a JSON string
             return json.dumps(response_data, indent=2)
@@ -727,3 +762,80 @@ class NexusDashboardAPI:
             import traceback
             logger.error(f"Traceback: {traceback.format_exc()}")
             return {"error": f"Exception while comparing switch configurations: {str(e)}"}
+
+    def get_device_by_serial(self, serial_number):
+        """Get device information by serial number from Nexus Dashboard.
+        
+        Args:
+            serial_number: The serial number of the device to look up
+            
+        Returns:
+            Dictionary containing the device information or error details
+        """
+        try:
+            logger.debug(f"Looking up device with serial number: {serial_number}")
+            
+            # First try to find the device in the inventory
+            all_switches = self.get_all_switches()
+            
+            if isinstance(all_switches, dict) and "switches" in all_switches:
+                # Look for the device in the switches list
+                for switch in all_switches["switches"]:
+                    if switch.get("serialNumber", "").lower() == serial_number.lower():
+                        logger.debug(f"Found device with serial number {serial_number} in inventory")
+                        return {
+                            "device_found": True,
+                            "device_info": switch
+                        }
+            
+            # If not found in the basic inventory, try a more specific endpoint
+            endpoint = f"/appcenter/cisco/ndfc/api/v1/lan-fabric/rest/inventory/devices"
+            logger.debug(f"Querying devices endpoint for serial number: {serial_number}")
+            result = self._make_request("GET", endpoint)
+            
+            # If we got a successful response, search for the device by serial number
+            if not (isinstance(result, dict) and result.get("error")):
+                if isinstance(result, list):
+                    for device in result:
+                        if isinstance(device, dict) and device.get("serialNumber", "").lower() == serial_number.lower():
+                            logger.debug(f"Found device with serial number {serial_number} in devices endpoint")
+                            return {
+                                "device_found": True,
+                                "device_info": device
+                            }
+                
+                # Try another endpoint format if the first one didn't find the device
+                alt_endpoint = f"/appcenter/cisco/ndfc/api/v1/lan-fabric/rest/control/devices/{serial_number}"
+                logger.debug(f"Trying alternative endpoint for device: {alt_endpoint}")
+                alt_result = self._make_request("GET", alt_endpoint)
+                
+                if not (isinstance(alt_result, dict) and alt_result.get("error")):
+                    logger.debug(f"Found device with serial number {serial_number} in alternative endpoint")
+                    return {
+                        "device_found": True,
+                        "device_info": alt_result
+                    }
+            
+            # If we still haven't found the device, try one more endpoint format
+            final_endpoint = f"/appcenter/cisco/ndfc/api/v1/lan-fabric/rest/inventory/manageddevices?serialNumber={serial_number}"
+            logger.debug(f"Trying final endpoint for device: {final_endpoint}")
+            final_result = self._make_request("GET", final_endpoint)
+            
+            if not (isinstance(final_result, dict) and final_result.get("error")):
+                if isinstance(final_result, list) and len(final_result) > 0:
+                    logger.debug(f"Found device with serial number {serial_number} in final endpoint")
+                    return {
+                        "device_found": True,
+                        "device_info": final_result[0] if isinstance(final_result[0], dict) else final_result
+                    }
+            
+            # If we've tried all endpoints and still haven't found the device
+            logger.error(f"Device with serial number {serial_number} not found in any endpoint")
+            return {
+                "device_found": False,
+                "error": f"Device with serial number {serial_number} not found in Nexus Dashboard inventory"
+            }
+            
+        except Exception as e:
+            logger.error(f"Error getting device by serial number: {str(e)}")
+            return {"error": f"Exception while retrieving device information: {str(e)}"}
