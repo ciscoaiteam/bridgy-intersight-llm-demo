@@ -429,7 +429,7 @@ class NexusDashboardAPI:
                 # If we found a model name, check if there's a serial number in parentheses
                 if switch_name:
                     # Look for a pattern like "N9K-C9300v (9H24YY16D5F)"
-                    serial_in_parens = re.findall(fr'{re.escape(switch_name)}\s*\(([a-zA-Z0-9\-]+)\)', question_lower)
+                    serial_in_parens = re.findall(fr'{re.escape(switch_name)}\s*\(([a-zA-Z0-9\-]+)\)', question)
                     if serial_in_parens:
                         serial_number = serial_in_parens[0]
                         logger.debug(f"Found serial number {serial_number} for switch {switch_name}")
@@ -451,59 +451,98 @@ class NexusDashboardAPI:
             elif any(term in question_lower for term in ["ip", "address", "addresses", "information", "details"]) and any(pattern in question_lower for pattern in ["serial", "model", "device", "switch"]):
                 logger.debug("Detected request for device information by serial number or model")
                 
-                # Try to extract serial number from the question
+                # Try to extract serial number and model from the question
                 import re
                 
-                # Look for patterns like "serial number X" or text in parentheses which might be a serial
-                serial_patterns = [
-                    r'serial\s+(?:number\s+)?([a-zA-Z0-9]+)',  # "serial number ABC123"
-                    r'serial\s*:\s*([a-zA-Z0-9]+)',            # "serial: ABC123"
-                    r'serial\s*=\s*([a-zA-Z0-9]+)',            # "serial=ABC123"
-                    r'\(([a-zA-Z0-9]+)\)',                     # "(ABC123)"
-                    r'\(([a-zA-Z0-9\-]+)\)',                   # "(9H24YY16D5F)"
-                    r'device\s+([a-zA-Z0-9\-]+)',              # "device N9K-C9300v"
-                    r'switch\s+([a-zA-Z0-9\-]+)',              # "switch N9K-C9300v"
-                    r'of\s+([a-zA-Z0-9\-]+)',                  # "of N9K-C9300v"
-                    r'for\s+([a-zA-Z0-9\-]+)'                  # "for N9K-C9300v"
-                ]
+                # First, try to extract model and serial number together using a pattern like "N9K-C9300v (9H24YY16D5F)"
+                model_serial_pattern = r'([a-zA-Z0-9\-]+)\s*\(([a-zA-Z0-9\-]+)\)'
+                model_serial_matches = re.findall(model_serial_pattern, question)
                 
-                serial_number = None
-                model_name = None
-                
-                # First try to extract the serial number
-                for pattern in serial_patterns:
-                    matches = re.findall(pattern, question_lower)
-                    if matches:
-                        if "-" in matches[0]:  # Likely a model name like N9K-C9300v
-                            model_name = matches[0]
-                            logger.debug(f"Extracted model name: {model_name}")
-                        else:  # Likely a serial number
-                            serial_number = matches[0]
-                            logger.debug(f"Extracted serial number: {serial_number}")
-                        break
-                
-                # If we found a model name but no serial, look for a serial in parentheses
-                if model_name and not serial_number:
-                    # Look for a pattern like "N9K-C9300v (9H24YY16D5F)"
-                    serial_in_parens = re.findall(fr'{re.escape(model_name)}\s*\(([a-zA-Z0-9\-]+)\)', question)
-                    if serial_in_parens:
-                        serial_number = serial_in_parens[0]
-                        logger.debug(f"Extracted serial number from parentheses: {serial_number}")
-                
-                # If we have a serial number, use it; otherwise use the model name
-                search_term = serial_number if serial_number else model_name
-                
-                if search_term:
-                    logger.debug(f"Searching for device with identifier: {search_term}")
-                    device_info = self.get_device_by_serial(search_term)
+                if model_serial_matches:
+                    model_name = model_serial_matches[0][0]
+                    serial_number = model_serial_matches[0][1]
+                    logger.debug(f"Extracted model: {model_name} and serial: {serial_number} from combined pattern")
+                    
+                    # First try to get device info using the serial number
+                    logger.debug(f"Looking up device with serial number: {serial_number}")
+                    device_info = self.get_device_by_serial(serial_number)
+                    
+                    # If that fails, try using the model name
+                    if device_info.get("device_found", False) is False:
+                        logger.debug(f"Serial number lookup failed, trying model name: {model_name}")
+                        device_info = self.get_device_by_serial(model_name)
+                    
                     response_data["device_info"] = device_info
                 else:
-                    logger.debug("Could not extract serial number or model from the question")
-                    response_data["device_info"] = {
-                        "error": "Could not identify which device to get information for. Please specify the serial number or model clearly.",
-                        "example": "Example: 'What is the IP address of device with serial number ABC123?'"
-                    }
+                    # If we didn't find a combined pattern, look for individual patterns
+                    # Look for patterns like "serial number X" or text in parentheses which might be a serial
+                    serial_patterns = [
+                        r'serial\s+(?:number\s+)?([a-zA-Z0-9\-]+)',  # "serial number ABC123"
+                        r'serial\s*:\s*([a-zA-Z0-9\-]+)',            # "serial: ABC123"
+                        r'serial\s*=\s*([a-zA-Z0-9\-]+)',            # "serial=ABC123"
+                        r'\(([a-zA-Z0-9\-]+)\)',                     # "(ABC123)"
+                        r'device\s+([a-zA-Z0-9\-]+)',                # "device N9K-C9300v"
+                        r'switch\s+([a-zA-Z0-9\-]+)',                # "switch N9K-C9300v"
+                        r'of\s+([a-zA-Z0-9\-]+)',                    # "of N9K-C9300v"
+                        r'for\s+([a-zA-Z0-9\-]+)'                    # "for N9K-C9300v"
+                    ]
+                    
+                    serial_number = None
+                    model_name = None
+                    
+                    # First try to extract the serial number or model
+                    for pattern in serial_patterns:
+                        matches = re.findall(pattern, question_lower)
+                        if matches:
+                            identifier = matches[0]
+                            if "-" in identifier:  # Likely a model name like N9K-C9300v
+                                model_name = identifier
+                                logger.debug(f"Extracted model name: {model_name}")
+                            else:  # Likely a serial number
+                                serial_number = identifier
+                                logger.debug(f"Extracted serial number: {serial_number}")
+                            break
+                    
+                    # Use the serial number if found, otherwise use the model name
+                    search_term = serial_number if serial_number else model_name
+                    
+                    if search_term:
+                        logger.debug(f"Searching for device with identifier: {search_term}")
+                        device_info = self.get_device_by_serial(search_term)
+                        response_data["device_info"] = device_info
+                    else:
+                        logger.debug("Could not extract serial number or model from the question")
+                        response_data["device_info"] = {
+                            "error": "Could not identify which device to get information for. Please specify the serial number or model clearly.",
+                            "example": "Example: 'What is the IP address of device with serial number ABC123?'"
+                        }
                 
+                # If we have device info but it's empty, try to get all switches and find the matching one
+                if "device_info" in response_data and (not response_data["device_info"] or response_data["device_info"] == {}):
+                    logger.debug("Device info is empty, trying to find device in all switches")
+                    
+                    # Get all switches
+                    all_switches = self.get_all_switches()
+                    
+                    if isinstance(all_switches, dict) and "switches" in all_switches:
+                        # Look for the device in the switches list
+                        for switch in all_switches["switches"]:
+                            # Check if this switch matches our search criteria
+                            if (serial_number and switch.get("serialNumber", "").lower() == serial_number.lower()) or \
+                               (model_name and switch.get("model", "").lower() == model_name.lower()) or \
+                               (model_name and model_name.lower() in switch.get("model", "").lower()):
+                                logger.debug(f"Found matching device in all switches list")
+                                response_data["device_info"] = {
+                                    "device_found": True,
+                                    "device_info": switch
+                                }
+                                break
+                    
+                    # If we still don't have device info, include all switches in the response
+                    if not response_data["device_info"] or response_data["device_info"] == {}:
+                        logger.debug("Could not find specific device, including all switches in response")
+                        response_data["switches"] = all_switches
+            
             # Format the response as a JSON string
             return json.dumps(response_data, indent=2)
             
@@ -700,7 +739,8 @@ class NexusDashboardAPI:
                 
                 if isinstance(all_switches, dict) and "switches" in all_switches:
                     for switch in all_switches["switches"]:
-                        if (switch.get("deviceName", "").lower() == switch_id_or_name.lower() or 
+                        if (switch.get("serialNumber", "").lower() == switch_id_or_name.lower() or 
+                            switch.get("deviceName", "").lower() == switch_id_or_name.lower() or 
                             switch.get("ipAddress", "") == switch_id_or_name):
                             # Found the switch, use its ID for the config request
                             if "serialNumber" in switch:
@@ -747,7 +787,41 @@ class NexusDashboardAPI:
                         "configuration": alt_result
                     }
                 
+                # If both config endpoints failed, try to get basic info from inventory
+                logger.debug(f"Configuration endpoints failed, falling back to basic device information")
+                
+                # Look for the switch in the inventory we already retrieved
+                if isinstance(all_switches, dict) and "switches" in all_switches:
+                    for switch in all_switches["switches"]:
+                        if (switch.get("serialNumber", "").lower() == switch_id.lower() or
+                            switch.get("deviceName", "").lower() == switch_id_or_name.lower() or
+                            switch.get("ipAddress", "") == switch_id_or_name):
+                            
+                            logger.debug(f"Found basic device information in inventory")
+                            return {
+                                "switch_id": switch_id,
+                                "switch_name": switch_id_or_name,
+                                "note": "Could not retrieve detailed configuration. The switch may be unreachable or the configuration API may not be available.",
+                                "basic_info": switch,
+                                "status": "Limited information available"
+                            }
+                
+                # Try one more endpoint for running config
+                running_config_endpoint = f"/appcenter/cisco/ndfc/api/v1/lan-fabric/rest/control/switches/{switch_id}/running-config"
+                logger.debug(f"Trying running config endpoint: {running_config_endpoint}")
+                running_result = self._make_request("GET", running_config_endpoint)
+                
+                if not (isinstance(running_result, dict) and running_result.get("error")):
+                    logger.debug(f"Successfully retrieved running configuration")
+                    return {
+                        "switch_id": switch_id,
+                        "switch_name": switch_id_or_name,
+                        "configuration": running_result,
+                        "config_type": "running-config"
+                    }
+                
                 return {"error": f"Failed to retrieve configuration for switch {switch_id_or_name}", "details": result.get("error", "Unknown error")}
+            
         except Exception as e:
             logger.error(f"Error getting switch configuration: {str(e)}")
             return {"error": f"Exception while retrieving switch configuration: {str(e)}"}
