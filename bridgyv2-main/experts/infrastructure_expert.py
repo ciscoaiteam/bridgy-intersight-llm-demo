@@ -77,12 +77,11 @@ class InfrastructureExpert:
 
         IMPORTANT GUIDELINES:
         1. If the API response contains a formatted table or list, present this information directly without additional analysis.
-        2. When a consolidated table is available, prioritize showing this unified view first, as it provides the most comprehensive overview.
-        3. For switch-specific queries, focus on the information listed in the API response.
-        4. If the API response contains both Intersight and Nexus Dashboard data, include information from both sources.
-        5. Maintain the structure in your response, including the consolidated table format when available.
-        6. Provide factual information based on the API response rather than speculative analysis.
-        7. When showing tables, ensure they are properly formatted with markdown table syntax.
+        2. For switch-specific queries, focus on the information listed in the API response.
+        3. If the API response contains both Intersight and Nexus Dashboard data, include information from both sources.
+        4. Maintain the structure in your response, showing the separate tables for Intersight and Nexus Dashboard.
+        5. Provide factual information based on the API response rather than speculative analysis.
+        6. When showing tables, ensure they are properly formatted with markdown table syntax.
 
         Provide a detailed and technical response:
         """
