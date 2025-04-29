@@ -58,7 +58,7 @@ For the fastest setup, especially in Cisco DCloud environments, use the `docker_
 
 - Download the docker_run.sh file from the root of the repo. 
 ```bash
-# Run the AI.sh that is deployed to get all the docker / CUDA / Python stuff installed first
+# Run the AI.sh that is deployed to get all the docker / CUDA / Python stuff installed first (For dCloud Installs only)
 ./ai.sh
 
 # Clone the Directory ( You could do just the docker_run.sh file but maybe you want to see what else is in this ) 
@@ -80,6 +80,9 @@ Notes: Update the new .env and PEM files in the config folder. These will be mou
 For custom configurations or latest source code:
 
 ```bash
+# Run the AI.sh that is deployed to get all the docker / CUDA / Python stuff installed first (For dCloud Installs only)
+./ai.sh
+
 # Clone the repository
 git clone https://github.com/ciscoaiteam/bridgy-intersight-llm-demo.git
 
