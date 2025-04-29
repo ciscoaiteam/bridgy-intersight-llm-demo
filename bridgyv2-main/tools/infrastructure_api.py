@@ -169,8 +169,8 @@ class InfrastructureAPI:
         
         # Now create a consolidated table with all switches
         consolidated_table = "## Consolidated Switch Information\n\n"
-        consolidated_table += "| Source | Device Name/ID | Model | Serial Number | IP Address | Status |\n"
-        consolidated_table += "|--------|---------------|-------|---------------|------------|--------|\n"
+        consolidated_table += "| Source | Device Name/ID | Model | Serial Number | IP Address | Status | Fabric |\n"
+        consolidated_table += "|--------|---------------|-------|---------------|------------|--------|--------|\n"
         
         # Add Intersight switches to consolidated table
         if "intersight_switches" in switches_info and switches_info["intersight_switches"]:
@@ -181,8 +181,9 @@ class InfrastructureAPI:
                 serial = switch.get('serial', 'N/A')
                 mgmt_ip = switch.get('management_ip', 'N/A')
                 status = switch.get('status', 'N/A')
+                fabric = "N/A"  # Intersight doesn't have fabric information
                 
-                consolidated_table += f"| {source} | {device_id} | {model} | {serial} | {mgmt_ip} | {status} |\n"
+                consolidated_table += f"| {source} | {device_id} | {model} | {serial} | {mgmt_ip} | {status} | {fabric} |\n"
         
         # Add Nexus Dashboard switches to consolidated table
         if "nexus_dashboard_switches" in switches_info and switches_info["nexus_dashboard_switches"]:
@@ -193,8 +194,9 @@ class InfrastructureAPI:
                 serial = switch.get('serialNumber', 'N/A')
                 ip_address = switch.get('ipAddress', 'N/A')
                 status = switch.get('status', 'N/A')
+                fabric = switch.get('fabricName', 'N/A')
                 
-                consolidated_table += f"| {source} | {device_name} | {model} | {serial} | {ip_address} | {status} |\n"
+                consolidated_table += f"| {source} | {device_name} | {model} | {serial} | {ip_address} | {status} | {fabric} |\n"
         
         # Return both the consolidated table and the detailed sections
         return consolidated_table + "\n\n" + intersight_section + nexus_section
