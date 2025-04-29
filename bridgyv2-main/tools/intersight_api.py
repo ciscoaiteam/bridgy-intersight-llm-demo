@@ -1179,7 +1179,7 @@ class IntersightAPI:
             
             # Check for GPU queries
             if "gpu" in question_lower or "gpus" in question_lower:
-                return self._format_gpu_response(self.client.get_servers())
+                return self._format_gpu_response(self.client.get_server_gpus())
                 
             # Check for VM queries
             if any(pattern in question_lower for pattern in [
@@ -1441,36 +1441,32 @@ class IntersightAPI:
 
     def _format_gpu_response(self, servers: List[Dict[str, Any]]) -> str:
         """Format GPU information from servers into a readable response."""
-        gpu_servers = []
-        
-        for server in servers:
-            # Check if server has GPU information
-            if "gpus" in server and server["gpus"]:
-                gpu_servers.append(server)
-        
-        if not gpu_servers:
+        if not servers:
             return "No GPUs found in any servers in your environment."
         
         response = "### GPUs Running in Your Environment\n\n"
-        response += "| Server Name | Server Model | GPU Model | GPU Count |\n"
+        response += "| Server Name | Server Model | GPU Model | PCI Slot |\n"
         response += "|-------------|--------------|-----------|----------|\n"
         
-        for server in gpu_servers:
+        for server in servers:
             server_name = server.get("name", "Unknown")
             server_model = server.get("model", "Unknown")
-            gpus = server.get("gpus", [])
             
-            # Group GPUs by model for counting
-            gpu_counts = {}
-            for gpu in gpus:
+            # Handle both single GPU and multiple GPUs formats
+            if "gpu" in server:
+                # Single GPU format
+                gpu = server.get("gpu", {})
                 gpu_model = gpu.get("model", "Unknown GPU")
-                if gpu_model in gpu_counts:
-                    gpu_counts[gpu_model] += 1
-                else:
-                    gpu_counts[gpu_model] = 1
-            
-            # Add each GPU type as a separate row
-            for gpu_model, count in gpu_counts.items():
-                response += f"| {server_name} | {server_model} | {gpu_model} | {count} |\n"
+                pci_slot = gpu.get("pci_slot", "N/A")
+                
+                response += f"| {server_name} | {server_model} | {gpu_model} | {pci_slot} |\n"
+            elif "gpus" in server:
+                # Multiple GPUs format
+                gpus = server.get("gpus", [])
+                for gpu in gpus:
+                    gpu_model = gpu.get("model", "Unknown GPU")
+                    pci_slot = gpu.get("pci_slot", "N/A")
+                    
+                    response += f"| {server_name} | {server_model} | {gpu_model} | {pci_slot} |\n"
         
         return response
