@@ -249,13 +249,17 @@ class ExpertRouter:
         server_patterns = [
             "server" in query_lower,
             "servers" in query_lower,
+            "what servers" in query_lower,
+            "servers in my environment" in query_lower,
+            "servers are running" in query_lower,
+            "running in my environment" in query_lower and not "switches" in query_lower,
             "ucs" in query_lower,
             "hx" in query_lower,
             "hyperflex" in query_lower,
             "blade" in query_lower,
             "rack" in query_lower and "server" in query_lower,
             "firmware" in query_lower,
-            "gpu" in query_lower or "gpus" in query_lower,  
+            "gpu" in query_lower or "gpus" in query_lower,
             "hardware" in query_lower
         ]
         
@@ -356,6 +360,10 @@ class ExpertRouter:
         
         # Exclude fabric-related queries as they should go to Nexus Dashboard Expert
         if "fabric" in query_lower or "vlan" in query_lower:
+            return False
+            
+        # Exclude server-related queries as they should go to Intersight Expert
+        if "server" in query_lower or "servers" in query_lower or "firmware" in query_lower or "gpu" in query_lower:
             return False
             
         if any(switch_patterns):
