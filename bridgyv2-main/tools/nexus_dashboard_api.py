@@ -416,23 +416,45 @@ class NexusDashboardAPI:
                     r'serial\s*:\s*([a-zA-Z0-9]+)',            # "serial: ABC123"
                     r'serial\s*=\s*([a-zA-Z0-9]+)',            # "serial=ABC123"
                     r'\(([a-zA-Z0-9]+)\)',                     # "(ABC123)"
+                    r'\(([a-zA-Z0-9\-]+)\)',                   # "(9H24YY16D5F)"
                     r'device\s+([a-zA-Z0-9\-]+)',              # "device N9K-C9300v"
-                    r'switch\s+([a-zA-Z0-9\-]+)'               # "switch N9K-C9300v"
+                    r'switch\s+([a-zA-Z0-9\-]+)',              # "switch N9K-C9300v"
+                    r'of\s+([a-zA-Z0-9\-]+)',                  # "of N9K-C9300v"
+                    r'for\s+([a-zA-Z0-9\-]+)'                  # "for N9K-C9300v"
                 ]
                 
                 serial_number = None
+                model_name = None
+                
+                # First try to extract the serial number
                 for pattern in serial_patterns:
                     matches = re.findall(pattern, question_lower)
                     if matches:
-                        serial_number = matches[0]
-                        logger.debug(f"Extracted serial/model: {serial_number}")
+                        if "-" in matches[0]:  # Likely a model name like N9K-C9300v
+                            model_name = matches[0]
+                            logger.debug(f"Extracted model name: {model_name}")
+                        else:  # Likely a serial number
+                            serial_number = matches[0]
+                            logger.debug(f"Extracted serial number: {serial_number}")
                         break
                 
-                if serial_number:
-                    device_info = self.get_device_by_serial(serial_number)
+                # If we found a model name but no serial, look for a serial in parentheses
+                if model_name and not serial_number:
+                    # Look for a pattern like "N9K-C9300v (9H24YY16D5F)"
+                    serial_in_parens = re.findall(fr'{re.escape(model_name)}\s*\(([a-zA-Z0-9\-]+)\)', question)
+                    if serial_in_parens:
+                        serial_number = serial_in_parens[0]
+                        logger.debug(f"Extracted serial number from parentheses: {serial_number}")
+                
+                # If we have a serial number, use it; otherwise use the model name
+                search_term = serial_number if serial_number else model_name
+                
+                if search_term:
+                    logger.debug(f"Searching for device with identifier: {search_term}")
+                    device_info = self.get_device_by_serial(search_term)
                     response_data["device_info"] = device_info
                 else:
-                    logger.debug("Could not extract serial number from the question")
+                    logger.debug("Could not extract serial number or model from the question")
                     response_data["device_info"] = {
                         "error": "Could not identify which device to get information for. Please specify the serial number or model clearly.",
                         "example": "Example: 'What is the IP address of device with serial number ABC123?'"
@@ -763,17 +785,17 @@ class NexusDashboardAPI:
             logger.error(f"Traceback: {traceback.format_exc()}")
             return {"error": f"Exception while comparing switch configurations: {str(e)}"}
 
-    def get_device_by_serial(self, serial_number):
-        """Get device information by serial number from Nexus Dashboard.
+    def get_device_by_serial(self, serial_number_or_model):
+        """Get device information by serial number or model from Nexus Dashboard.
         
         Args:
-            serial_number: The serial number of the device to look up
+            serial_number_or_model: The serial number or model of the device to look up
             
         Returns:
             Dictionary containing the device information or error details
         """
         try:
-            logger.debug(f"Looking up device with serial number: {serial_number}")
+            logger.debug(f"Looking up device with identifier: {serial_number_or_model}")
             
             # First try to find the device in the inventory
             all_switches = self.get_all_switches()
@@ -781,8 +803,30 @@ class NexusDashboardAPI:
             if isinstance(all_switches, dict) and "switches" in all_switches:
                 # Look for the device in the switches list
                 for switch in all_switches["switches"]:
-                    if switch.get("serialNumber", "").lower() == serial_number.lower():
-                        logger.debug(f"Found device with serial number {serial_number} in inventory")
+                    # Check for match by serial number
+                    if switch.get("serialNumber", "").lower() == serial_number_or_model.lower():
+                        logger.debug(f"Found device with serial number {serial_number_or_model} in inventory")
+                        return {
+                            "device_found": True,
+                            "device_info": switch
+                        }
+                    # Check for match by model
+                    elif switch.get("model", "").lower() == serial_number_or_model.lower():
+                        logger.debug(f"Found device with model {serial_number_or_model} in inventory")
+                        return {
+                            "device_found": True,
+                            "device_info": switch
+                        }
+                    # Check for partial match by model
+                    elif serial_number_or_model.lower() in switch.get("model", "").lower():
+                        logger.debug(f"Found device with partial model match {serial_number_or_model} in inventory")
+                        return {
+                            "device_found": True,
+                            "device_info": switch
+                        }
+                    # Check for match by device name
+                    elif switch.get("deviceName", "").lower() == serial_number_or_model.lower():
+                        logger.debug(f"Found device with name {serial_number_or_model} in inventory")
                         return {
                             "device_found": True,
                             "device_info": switch
@@ -790,52 +834,82 @@ class NexusDashboardAPI:
             
             # If not found in the basic inventory, try a more specific endpoint
             endpoint = f"/appcenter/cisco/ndfc/api/v1/lan-fabric/rest/inventory/devices"
-            logger.debug(f"Querying devices endpoint for serial number: {serial_number}")
+            logger.debug(f"Querying devices endpoint for identifier: {serial_number_or_model}")
             result = self._make_request("GET", endpoint)
             
-            # If we got a successful response, search for the device by serial number
+            # If we got a successful response, search for the device by serial number or model
             if not (isinstance(result, dict) and result.get("error")):
                 if isinstance(result, list):
                     for device in result:
-                        if isinstance(device, dict) and device.get("serialNumber", "").lower() == serial_number.lower():
-                            logger.debug(f"Found device with serial number {serial_number} in devices endpoint")
-                            return {
-                                "device_found": True,
-                                "device_info": device
-                            }
+                        if isinstance(device, dict):
+                            # Check for match by serial number
+                            if device.get("serialNumber", "").lower() == serial_number_or_model.lower():
+                                logger.debug(f"Found device with serial number {serial_number_or_model} in devices endpoint")
+                                return {
+                                    "device_found": True,
+                                    "device_info": device
+                                }
+                            # Check for match by model
+                            elif device.get("model", "").lower() == serial_number_or_model.lower():
+                                logger.debug(f"Found device with model {serial_number_or_model} in devices endpoint")
+                                return {
+                                    "device_found": True,
+                                    "device_info": device
+                                }
+                            # Check for partial match by model
+                            elif serial_number_or_model.lower() in device.get("model", "").lower():
+                                logger.debug(f"Found device with partial model match {serial_number_or_model} in devices endpoint")
+                                return {
+                                    "device_found": True,
+                                    "device_info": device
+                                }
                 
                 # Try another endpoint format if the first one didn't find the device
-                alt_endpoint = f"/appcenter/cisco/ndfc/api/v1/lan-fabric/rest/control/devices/{serial_number}"
+                alt_endpoint = f"/appcenter/cisco/ndfc/api/v1/lan-fabric/rest/control/devices/{serial_number_or_model}"
                 logger.debug(f"Trying alternative endpoint for device: {alt_endpoint}")
                 alt_result = self._make_request("GET", alt_endpoint)
                 
                 if not (isinstance(alt_result, dict) and alt_result.get("error")):
-                    logger.debug(f"Found device with serial number {serial_number} in alternative endpoint")
+                    logger.debug(f"Found device with identifier {serial_number_or_model} in alternative endpoint")
                     return {
                         "device_found": True,
                         "device_info": alt_result
                     }
             
             # If we still haven't found the device, try one more endpoint format
-            final_endpoint = f"/appcenter/cisco/ndfc/api/v1/lan-fabric/rest/inventory/manageddevices?serialNumber={serial_number}"
+            final_endpoint = f"/appcenter/cisco/ndfc/api/v1/lan-fabric/rest/inventory/manageddevices?serialNumber={serial_number_or_model}"
             logger.debug(f"Trying final endpoint for device: {final_endpoint}")
             final_result = self._make_request("GET", final_endpoint)
             
             if not (isinstance(final_result, dict) and final_result.get("error")):
                 if isinstance(final_result, list) and len(final_result) > 0:
-                    logger.debug(f"Found device with serial number {serial_number} in final endpoint")
+                    logger.debug(f"Found device with identifier {serial_number_or_model} in final endpoint")
                     return {
                         "device_found": True,
                         "device_info": final_result[0] if isinstance(final_result[0], dict) else final_result
                     }
             
+            # Try a direct query for the model name
+            model_endpoint = f"/appcenter/cisco/ndfc/api/v1/lan-fabric/rest/inventory/switches?model={serial_number_or_model}"
+            logger.debug(f"Trying model-specific endpoint: {model_endpoint}")
+            model_result = self._make_request("GET", model_endpoint)
+            
+            if not (isinstance(model_result, dict) and model_result.get("error")):
+                if isinstance(model_result, list) and len(model_result) > 0:
+                    logger.debug(f"Found device with model {serial_number_or_model} in model-specific endpoint")
+                    return {
+                        "device_found": True,
+                        "device_info": model_result[0] if isinstance(model_result[0], dict) else model_result
+                    }
+            
             # If we've tried all endpoints and still haven't found the device
-            logger.error(f"Device with serial number {serial_number} not found in any endpoint")
+            logger.error(f"Device with identifier {serial_number_or_model} not found in any endpoint")
             return {
                 "device_found": False,
-                "error": f"Device with serial number {serial_number} not found in Nexus Dashboard inventory"
+                "error": f"Device with identifier {serial_number_or_model} not found in Nexus Dashboard inventory",
+                "note": "The Nexus Dashboard API might not have information about this device. Please verify the serial number or model name and try again."
             }
             
         except Exception as e:
-            logger.error(f"Error getting device by serial number: {str(e)}")
+            logger.error(f"Error getting device by identifier: {str(e)}")
             return {"error": f"Exception while retrieving device information: {str(e)}"}
