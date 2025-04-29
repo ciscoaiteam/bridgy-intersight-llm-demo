@@ -46,6 +46,8 @@ class ExpertRouter:
            - GPU information and hardware accelerators
            - Server management and monitoring
            - Data center compute infrastructure
+           - ANY questions about "servers running in my environment" or "what servers"
+           - ANY questions about server inventory or listing servers
         2. AI Pods Expert: For questions about:
            - Cisco AI Pods
            - AI compute infrastructure
@@ -62,8 +64,10 @@ class ExpertRouter:
            - Questions about both Intersight AND Nexus Dashboard
            - Questions about "switches" or "network devices" that need data from both systems
            - Questions that require coordinated information from multiple infrastructure sources
-           - ANY questions about "switches running in my environment" or similar queries that need combined data
+           - ONLY questions about "switches running in my environment" (not servers)
         5. General Expert: For general Cisco knowledge questions that don't relate to specific infrastructure
+
+        IMPORTANT: Any question about servers, server inventory, or "what servers are running" should go to the Intersight Expert, NOT the Infrastructure Expert.
 
         Question: {question}
 
