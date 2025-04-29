@@ -24,10 +24,9 @@ class InfrastructureExpert:
             self.api = InfrastructureAPI()
             
             # Initialize the LLM
-            self.llm = ChatOpenAI(
-                api_key="LLM",
-                model="/ai/models/Meta-Llama-3-8B-Instruct/",
-                base_url="http://64.101.169.102:8000/v1",
+            self.llm = OllamaLLM(
+                model="gemma2",  # Using local gemma2al model
+                base_url="http://localhost:11434",
                 temperature=0.0
             )
             
