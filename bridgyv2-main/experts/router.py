@@ -338,7 +338,12 @@ class ExpertRouter:
             "fabrics" in query_lower and "environment" in query_lower,
             "vlan" in query_lower,
             "msd" in query_lower and "association" in query_lower,
-            "syslog" in query_lower and "network" in query_lower
+            "syslog" in query_lower and "network" in query_lower,
+            "fabrics" in query_lower and "connected" in query_lower,
+            "fabric" in query_lower and "connected" in query_lower,
+            "multisite" in query_lower,
+            "multi-site" in query_lower,
+            "fabrics" in query_lower and "via multisite" in query_lower
         ]
         
         if any(fabric_patterns):
