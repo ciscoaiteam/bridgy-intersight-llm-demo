@@ -32,7 +32,7 @@ ENV PATH="/root/.ollama/bin:${PATH}"
 
 # Set CUDA paths only if running on x86_64 — safe to always define (won’t error if not used)
 ENV PATH="/usr/local/cuda/bin:${PATH}"
-ENV LD_LIBRARY_PATH="/usr/local/cuda/lib64:${LD_LIBRARY_PATH}"
+ENV LD_LIBRARY_PATH="/usr/local/cuda/lib64:${LD_LIBRARY_PATH:-}"
 
 # Configure Ollama model storage
 RUN mkdir -p /config/ollama
