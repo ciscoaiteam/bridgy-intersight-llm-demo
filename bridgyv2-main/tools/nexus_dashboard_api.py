@@ -391,40 +391,47 @@ class NexusDashboardAPI:
                 # Try to extract switch name or ID from the question
                 import re
                 
-                # Look for patterns with "of" or "for" followed by a switch name
-                # This should catch patterns like "configuration of N9K-C9300v"
-                of_patterns = [
-                    r'(?:config|configuration|settings)\s+of\s+([a-zA-Z0-9\-\.]+)',  # "configuration of N9K-C9300v"
-                    r'(?:config|configuration|settings)\s+for\s+([a-zA-Z0-9\-\.]+)',  # "configuration for N9K-C9300v"
-                    r'([a-zA-Z0-9\-\.]+)\s+(?:config|configuration|settings)',       # "N9K-C9300v configuration"
-                    r'switch\s+([a-zA-Z0-9\-\.]+)'                                  # "switch N9K-C9300v"
-                ]
-                
-                # First try the "of/for" patterns which are more specific
-                switch_name = None
-                for pattern in of_patterns:
-                    matches = re.findall(pattern, question_lower)
-                    if matches:
-                        # Skip if the match is "switch" or "configuration" itself
-                        if matches[0] not in ["switch", "configuration", "config", "settings"]:
-                            switch_name = matches[0]
-                            logger.debug(f"Extracted switch name from of/for pattern: {switch_name}")
-                            break
-                
-                # If we didn't find a match with the of/for patterns, try to find a model name pattern
-                if not switch_name:
-                    # Look for model name patterns like N9K-C9300v
-                    model_patterns = [
-                        r'([a-zA-Z0-9]+\-[a-zA-Z0-9]+)',  # "N9K-C9300v"
-                        r'([a-zA-Z0-9]+\-[a-zA-Z0-9]+\-[a-zA-Z0-9]+)'  # "N9K-C9300v-something"
+                # First, check for IP address pattern
+                ip_pattern = r'\b(\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})\b'
+                ip_matches = re.findall(ip_pattern, question)
+                if ip_matches:
+                    switch_name = ip_matches[0]
+                    logger.debug(f"Extracted IP address for switch: {switch_name}")
+                else:
+                    # Look for patterns with "of" or "for" followed by a switch name
+                    # This should catch patterns like "configuration of N9K-C9300v"
+                    of_patterns = [
+                        r'(?:config|configuration|settings)\s+of\s+([a-zA-Z0-9\-\.]+)',  # "configuration of N9K-C9300v"
+                        r'(?:config|configuration|settings)\s+for\s+([a-zA-Z0-9\-\.]+)',  # "configuration for N9K-C9300v"
+                        r'([a-zA-Z0-9\-\.]+)\s+(?:config|configuration|settings)',       # "N9K-C9300v configuration"
+                        r'switch\s+([a-zA-Z0-9\-\.]+)'                                  # "switch N9K-C9300v"
                     ]
                     
-                    for pattern in model_patterns:
+                    # First try the "of/for" patterns which are more specific
+                    switch_name = None
+                    for pattern in of_patterns:
                         matches = re.findall(pattern, question_lower)
                         if matches:
-                            switch_name = matches[0]
-                            logger.debug(f"Extracted switch name from model pattern: {switch_name}")
-                            break
+                            # Skip if the match is "switch" or "configuration" itself
+                            if matches[0] not in ["switch", "configuration", "config", "settings"]:
+                                switch_name = matches[0]
+                                logger.debug(f"Extracted switch name from of/for pattern: {switch_name}")
+                                break
+                    
+                    # If we didn't find a match with the of/for patterns, try to find a model name pattern
+                    if not switch_name:
+                        # Look for model name patterns like N9K-C9300v
+                        model_patterns = [
+                            r'([a-zA-Z0-9]+\-[a-zA-Z0-9]+)',  # "N9K-C9300v"
+                            r'([a-zA-Z0-9]+\-[a-zA-Z0-9]+\-[a-zA-Z0-9]+)'  # "N9K-C9300v-something"
+                        ]
+                        
+                        for pattern in model_patterns:
+                            matches = re.findall(pattern, question_lower)
+                            if matches:
+                                switch_name = matches[0]
+                                logger.debug(f"Extracted switch name from model pattern: {switch_name}")
+                                break
                 
                 # If we found a model name, check if there's a serial number in parentheses
                 if switch_name:
@@ -793,6 +800,7 @@ class NexusDashboardAPI:
                 # Look for the switch in the inventory we already retrieved
                 if isinstance(all_switches, dict) and "switches" in all_switches:
                     for switch in all_switches["switches"]:
+                        # Check if this switch matches our search criteria
                         if (switch.get("serialNumber", "").lower() == switch_id.lower() or
                             switch.get("deviceName", "").lower() == switch_id_or_name.lower() or
                             switch.get("ipAddress", "") == switch_id_or_name):
