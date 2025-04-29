@@ -44,22 +44,11 @@ class InfrastructureExpert:
             # Create a prompt for the LLM
             prompt = self._create_prompt(question, api_response)
             
-            # Get the LLM response
-            response = self.llm([
-                SystemMessage(content=prompt),
-                HumanMessage(content=question)
-            ])
+            # Get the LLM response - use invoke() method with a string prompt
+            response = self.llm.invoke(prompt + "\n\n" + question)
             
-            # Extract just the content from the response
-            if hasattr(response, 'content'):
-                return response.content
-            elif isinstance(response, dict) and 'content' in response:
-                return response['content']
-            elif isinstance(response, str):
-                return response
-            else:
-                # Try to convert the response to a string if it's not already
-                return str(response)
+            # Return the response string
+            return response
             
         except Exception as e:
             logger.error(f"Error processing query: {str(e)}")
