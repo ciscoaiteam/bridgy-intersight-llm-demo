@@ -458,6 +458,8 @@ class IntersightClientTool:
             servers = self.get_servers()
             servers_with_upgrades = []
             
+            logger.info(f"Checking firmware upgrades for {len(servers)} servers")
+            
             for server in servers:
                 server_name = server.get('name')
                 if not server_name:
@@ -465,6 +467,7 @@ class IntersightClientTool:
                     
                 # Get current firmware version
                 current_firmware = server.get('firmware', 'Unknown')
+                logger.info(f"Server {server_name} has current firmware: {current_firmware}")
                 
                 # Get compatible firmware packages for this server
                 firmware_info = self.get_firmware_for_server(server_name)
@@ -486,6 +489,8 @@ class IntersightClientTool:
                     })
                     continue
                 
+                logger.info(f"Found {len(compatible_firmware)} compatible firmware packages for {server_name}")
+                
                 # Find newer firmware versions
                 newer_firmware = []
                 for firmware in compatible_firmware:
@@ -497,6 +502,8 @@ class IntersightClientTool:
                     
                     # Use proper version comparison
                     comparison_result = self._compare_firmware_versions(firmware_version, current_firmware)
+                    logger.info(f"Comparing {firmware_version} to {current_firmware} for {server_name}: result={comparison_result}")
+                    
                     if comparison_result > 0:  # firmware_version > current_firmware
                         newer_firmware.append(firmware)
                 
@@ -506,6 +513,8 @@ class IntersightClientTool:
                     newer_firmware.sort(key=lambda x: x.get('version', ''), reverse=True)
                     latest_firmware = newer_firmware[0]
                     
+                    logger.info(f"Server {server_name} can be upgraded from {current_firmware} to {latest_firmware.get('version', 'Unknown')}")
+                    
                     servers_with_upgrades.append({
                         'name': server_name,
                         'model': server.get('model', 'Unknown'),
@@ -514,6 +523,8 @@ class IntersightClientTool:
                     })
                 else:
                     # No newer firmware, but add to list with N/A for available firmware
+                    logger.info(f"No newer firmware found for server {server_name} (current: {current_firmware})")
+                    
                     servers_with_upgrades.append({
                         'name': server_name,
                         'model': server.get('model', 'Unknown'),
@@ -521,8 +532,8 @@ class IntersightClientTool:
                         'available_firmware': 'N/A'
                     })
             
+            logger.info(f"Found {len(servers_with_upgrades)} servers with firmware information")
             return servers_with_upgrades
-            
         except Exception as e:
             logger.error(f"Error getting servers with firmware upgrades: {str(e)}")
             import traceback
@@ -1169,11 +1180,12 @@ class IntersightAPI:
                 # Check for firmware upgrade queries
                 if any(pattern in question_lower for pattern in [
                     "upgrade", "can be upgraded", "available upgrade", 
-                    "newer firmware", "update firmware"
+                    "newer firmware", "update firmware", "that can be upgraded"
                 ]):
-                    return self._format_firmware_upgrade_response(
-                        self.client.get_servers_with_firmware_upgrades()
-                    )
+                    logger.info("Processing firmware upgrade query")
+                    upgrade_data = self.client.get_servers_with_firmware_upgrades()
+                    logger.info(f"Firmware upgrade data: {len(upgrade_data)} servers")
+                    return self._format_firmware_upgrade_response(upgrade_data)
                 # General firmware query
                 return self._format_firmware_response(self.client.get_firmware_status())
             
@@ -1410,6 +1422,14 @@ class IntersightAPI:
         
         for server in servers_with_upgrades:
             response += f"| {server.get('name', 'N/A')} | {server.get('model', 'N/A')} | {server.get('current_firmware', 'N/A')} | {server.get('available_firmware', 'N/A')} |\n"
+        
+        response += "\n\n**Note:** The firmware versions shown are the latest available for each server based on compatibility with the server model. To upgrade, use the Intersight portal to schedule and deploy these firmware updates."
+        response += "\n\n**Upgrade Instructions:**\n"
+        response += "1. Log in to the Cisco Intersight portal\n"
+        response += "2. Navigate to the Firmware section\n"
+        response += "3. Select the servers you wish to upgrade\n"
+        response += "4. Schedule the firmware upgrade during a maintenance window\n"
+        response += "5. Monitor the upgrade process through the Intersight dashboard\n"
         
         return response
 
