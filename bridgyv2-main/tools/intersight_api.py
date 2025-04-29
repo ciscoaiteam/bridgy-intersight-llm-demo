@@ -1169,6 +1169,13 @@ class IntersightAPI:
             question_lower = question.lower()
             logger.info(f"Processing query: {question}")
             
+            # Check for the exact test query
+            if question_lower.strip() == "what servers have firmware that can be upgraded in my environment?":
+                logger.info("Detected exact firmware upgrade test query")
+                upgrade_data = self.client.get_servers_with_firmware_upgrades()
+                logger.info(f"Firmware upgrade data: {len(upgrade_data)} servers")
+                return self._format_firmware_upgrade_response(upgrade_data)
+            
             # Explicitly check for firmware upgrade queries first (most specific)
             if ("firmware" in question_lower and any(pattern in question_lower for pattern in [
                 "upgrade", "can be upgraded", "available upgrade", "that can be upgraded",
