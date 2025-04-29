@@ -8,6 +8,7 @@ Nexus Dashboard Expert Questions:
 What is the syslog ip address for my network?
 What fabrics am i running in my environment?
 What MSD Associations are there in my fabric?
+What Fabrics are connected to another Fabric via Multisite?
 
 Infrastructure Expert Questions:
 What switches are running in my environment?
