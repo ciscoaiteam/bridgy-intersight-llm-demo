@@ -9,9 +9,11 @@ What is the syslog ip address for my network?
 What fabrics am i running in my environment?
 What MSD Associations are there in my fabric?
 What Fabrics are connected to another Fabric via Multisite?
-Compare switch configurations between Switch1 and Switch2
-What are the differences in configuration between Switch1 and Switch2?
-Show me the network configuration for Switch1
 
 Infrastructure Expert Questions:
 What switches are running in my environment?
+
+Pending Testing:
+Show me the network configuration for Switch1 (need Switches online)
+Compare switch configurations between Switch1 and Switch2 (need Switches online)
+What are the differences in configuration between Switch1 and Switch2 (need Switches online)?
