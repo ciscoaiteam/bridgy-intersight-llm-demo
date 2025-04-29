@@ -123,12 +123,11 @@ class InfrastructureAPI:
         
         response = "### Switches in Your Environment\n\n"
         
-        # First, create the separate tables for each source (keeping the existing format)
-        intersight_section = ""
+        # Format Intersight switches
         if "intersight_switches" in switches_info and switches_info["intersight_switches"]:
-            intersight_section += "## Intersight Network Elements\n\n"
-            intersight_section += "| Device ID | Model | Serial | Management IP | Version |\n"
-            intersight_section += "|-----------|-------|--------|---------------|----------|\n"
+            response += "## Intersight Network Elements\n\n"
+            response += "| Device ID | Model | Serial | Management IP | Version |\n"
+            response += "|-----------|-------|--------|---------------|----------|\n"
             
             for switch in switches_info["intersight_switches"]:
                 device_id = switch.get('device_id', 'N/A')
@@ -137,19 +136,19 @@ class InfrastructureAPI:
                 mgmt_ip = switch.get('management_ip', 'N/A')
                 version = switch.get('version', 'N/A')
                 
-                intersight_section += f"| {device_id} | {model} | {serial} | {mgmt_ip} | {version} |\n"
+                response += f"| {device_id} | {model} | {serial} | {mgmt_ip} | {version} |\n"
         elif "intersight_error" in switches_info:
-            intersight_section += "## Intersight Network Elements\n\n"
-            intersight_section += f"Error retrieving Intersight network elements: {switches_info['intersight_error']}\n\n"
+            response += "## Intersight Network Elements\n\n"
+            response += f"Error retrieving Intersight network elements: {switches_info['intersight_error']}\n\n"
         else:
-            intersight_section += "## Intersight Network Elements\n\n"
-            intersight_section += "No network elements found in Intersight.\n\n"
+            response += "## Intersight Network Elements\n\n"
+            response += "No network elements found in Intersight.\n\n"
         
-        nexus_section = ""
+        # Format Nexus Dashboard switches
         if "nexus_dashboard_switches" in switches_info and switches_info["nexus_dashboard_switches"]:
-            nexus_section += "\n## Nexus Dashboard Switches\n\n"
-            nexus_section += "| Device Name | IP Address | Serial Number | Model | Status | Fabric |\n"
-            nexus_section += "|-------------|-----------|--------------|-------|--------|--------|\n"
+            response += "\n## Nexus Dashboard Switches\n\n"
+            response += "| Device Name | IP Address | Serial Number | Model | Status | Fabric |\n"
+            response += "|-------------|-----------|--------------|-------|--------|--------|\n"
             
             for switch in switches_info["nexus_dashboard_switches"]:
                 device_name = switch.get('deviceName', 'N/A')
@@ -159,44 +158,12 @@ class InfrastructureAPI:
                 status = switch.get('status', 'N/A')
                 fabric = switch.get('fabricName', 'N/A')
                 
-                nexus_section += f"| {device_name} | {ip_address} | {serial} | {model} | {status} | {fabric} |\n"
+                response += f"| {device_name} | {ip_address} | {serial} | {model} | {status} | {fabric} |\n"
         elif "nexus_dashboard_error" in switches_info:
-            nexus_section += "\n## Nexus Dashboard Switches\n\n"
-            nexus_section += f"Error retrieving Nexus Dashboard switches: {switches_info['nexus_dashboard_error']}\n\n"
+            response += "\n## Nexus Dashboard Switches\n\n"
+            response += f"Error retrieving Nexus Dashboard switches: {switches_info['nexus_dashboard_error']}\n\n"
         else:
-            nexus_section += "\n## Nexus Dashboard Switches\n\n"
-            nexus_section += "No switches found in Nexus Dashboard.\n\n"
+            response += "\n## Nexus Dashboard Switches\n\n"
+            response += "No switches found in Nexus Dashboard.\n\n"
         
-        # Now create a consolidated table with all switches
-        consolidated_table = "## Consolidated Switch Information\n\n"
-        consolidated_table += "| Source | Device Name/ID | Model | Serial Number | IP Address | Status | Fabric |\n"
-        consolidated_table += "|--------|---------------|-------|---------------|------------|--------|--------|\n"
-        
-        # Add Intersight switches to consolidated table
-        if "intersight_switches" in switches_info and switches_info["intersight_switches"]:
-            for switch in switches_info["intersight_switches"]:
-                source = "Intersight"
-                device_id = switch.get('device_id', 'Unknown Device')
-                model = switch.get('model', 'N/A')
-                serial = switch.get('serial', 'N/A')
-                mgmt_ip = switch.get('management_ip', 'N/A')
-                status = switch.get('status', 'N/A')
-                fabric = "N/A"  # Intersight doesn't have fabric information
-                
-                consolidated_table += f"| {source} | {device_id} | {model} | {serial} | {mgmt_ip} | {status} | {fabric} |\n"
-        
-        # Add Nexus Dashboard switches to consolidated table
-        if "nexus_dashboard_switches" in switches_info and switches_info["nexus_dashboard_switches"]:
-            for switch in switches_info["nexus_dashboard_switches"]:
-                source = "Nexus Dashboard"
-                device_name = switch.get('deviceName', 'Unknown')
-                model = switch.get('model', 'N/A')
-                serial = switch.get('serialNumber', 'N/A')
-                ip_address = switch.get('ipAddress', 'N/A')
-                status = switch.get('status', 'N/A')
-                fabric = switch.get('fabricName', 'N/A')
-                
-                consolidated_table += f"| {source} | {device_name} | {model} | {serial} | {ip_address} | {status} | {fabric} |\n"
-        
-        # Return both the consolidated table and the detailed sections
-        return consolidated_table + "\n\n" + intersight_section + nexus_section
+        return response
