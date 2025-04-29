@@ -31,8 +31,10 @@ RUN curl -fsSL https://ollama.com/install.sh | sh
 ENV PATH="/root/.ollama/bin:${PATH}"
 
 # Set CUDA paths only if running on x86_64 — safe to always define (won’t error if not used)
+# Initialize LD_LIBRARY_PATH first to avoid Docker warning
+ENV LD_LIBRARY_PATH=""
 ENV PATH="/usr/local/cuda/bin:${PATH}"
-ENV LD_LIBRARY_PATH="/usr/local/cuda/lib64:${LD_LIBRARY_PATH:-}"
+ENV LD_LIBRARY_PATH="/usr/local/cuda/lib64:${LD_LIBRARY_PATH}"
 
 # Configure Ollama model storage
 RUN mkdir -p /config/ollama
