@@ -225,8 +225,6 @@ python3 -c "import langchain; print('LangChain installed successfully')"
 │   ├── intersight_api.py      # Intersight API interface
 │   ├── nexus_dashboard_api.py # Nexus Dashboard API interface
 │   └── pdf_loader.py          # PDF document loader
-├── utils/                     # Utility functions
-│   └── timetracker.py         # Time tracking utilities
 ├── config.py                  # Application configuration
 └── main.py                    # Main application entry point
 ```
