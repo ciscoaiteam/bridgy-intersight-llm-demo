@@ -226,15 +226,16 @@ python3 -c "import langchain; print('LangChain installed successfully')"
 │   ├── nexus_dashboard_api.py # Nexus Dashboard API interface
 │   └── pdf_loader.py          # PDF document loader
 ├── utils/                     # Utility functions
-│   ├── avatar_manager.py      # Chat avatar management
-│   └── styling.py             # UI styling utilities
+│   └── timetracker.py         # Time tracking utilities
 ├── config.py                  # Application configuration
 └── main.py                    # Main application entry point
 ```
 
-## Nexus Dashboard Features
+## Nexus Dashboard Integration
 
-The Nexus Dashboard integration provides several key capabilities:
+The Nexus Dashboard expert agent is specialized in handling queries related to Cisco's data center networking solutions, particularly the Nexus Dashboard platform.
+
+### Key Capabilities
 
 1. **Fabric Management**:
    - List and query fabrics in your Nexus environment
@@ -251,6 +252,42 @@ The Nexus Dashboard integration provides several key capabilities:
 4. **Network Configuration**:
    - Retrieve external IP configuration for trap and syslog
    - Access management IP information
+   
+5. **Telemetry & Monitoring**:
+   - Check alarm status and notifications
+   - Fetch telemetry data from network devices
+
+6. **Automation**:
+   - Trigger automation workflows
+   - Execute compliance checks
+
+### API Endpoints
+
+The Nexus Dashboard API supports the following endpoints:
+
+- `/api/v1/sites` - Get information about sites
+- `/api/v1/fabrics` - Get information about network fabrics
+- `/api/v1/devices` - Get information about network devices
+- `/api/v1/telemetry` - Get telemetry data
+- `/api/v1/alarms` - Get alarm information
+- `/api/v1/workflows` - Get and execute automation workflows
+- `/appcenter/cisco/ndfc/api/v1/lan-fabric/rest/control/fabrics` - Primary endpoint for fabric information
+- `/appcenter/cisco/ndfc/api/v1/lan-fabric/rest/control/fabrics/msd/fabric-associations` - MSD fabric associations
+- `/appcenter/cisco/ndfc/api/v1/lan-fabric/rest/inventory/allswitches` - Device inventory
+
+### Usage Examples
+
+The system automatically routes queries related to Nexus Dashboard to the Nexus Dashboard expert. Examples include:
+
+- "What's the status of my network fabric?"
+- "Show me all critical alarms in my Nexus Dashboard"
+- "What devices are registered in my Nexus Dashboard?"
+- "Get telemetry data for CPU utilization on my switches"
+- "Execute the network compliance check workflow"
+
+### Fallback Behavior
+
+If the Nexus Dashboard API is unavailable, the system will automatically fall back to the General Expert, which will provide general information about Nexus Dashboard based on its training data.
 
 ## Environment Variables
 
