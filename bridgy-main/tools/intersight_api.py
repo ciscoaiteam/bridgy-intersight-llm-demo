@@ -42,17 +42,22 @@ class IntersightClientTool:
                 raise Exception("Intersight API key ID not found in environment variables")
 
             # Read PEM key from file
-            # Primary and fallback PEM file paths
-            primary_pem_path = "/config/intersight.pem"
-            fallback_pem_path = "./intersight.pem"  # Change this if needed
-            pem_path = "/config/intersight.pem"
-
-            # Use fallback if primary doesn't exist
-            if os.path.exists(primary_pem_path):
-                pem_path = primary_pem_path
-                print(f"[INFO] Using PEM file at: {pem_path}")
-            elif os.path.exists(fallback_pem_path):
-                pem_path = fallback_pem_path
+            # Check for PEM file in project root directory first, with fallbacks for Docker and legacy locations
+            root_pem_path = "./intersight.pem"  # Project root (preferred location)
+            docker_pem_path = "/config/intersight.pem"  # Docker container path
+            legacy_pem_path = "./config/intersight.pem"  # Legacy location (deprecated)
+            pem_path = None
+            
+            # Check locations in order of preference
+            if os.path.exists(root_pem_path):
+                pem_path = root_pem_path
+                print(f"[INFO] Using PEM file from project root: {pem_path}")
+            elif os.path.exists(docker_pem_path):
+                pem_path = docker_pem_path
+                print(f"[INFO] Using PEM file from Docker mount: {pem_path}")
+            elif os.path.exists(legacy_pem_path):
+                pem_path = legacy_pem_path
+                print(f"[INFO] Using PEM file from legacy location (deprecated): {pem_path}")
                 print(f"[INFO] Fallback Dev PEM file used: {pem_path}")
             else:
                 pem_path = None
@@ -983,9 +988,12 @@ class IntersightClientTool:
                     # GPUs are typically identified as display controllers or have GPU in their name
                     if hasattr(device, 'device_class') and device.device_class == 'DisplayController':
                         is_gpu = True
-                    elif hasattr(device, 'model') and any(gpu_keyword in device.model.upper() for gpu_keyword in ['GPU', 'NVIDIA', 'AMD', 'RADEON', 'TESLA', 'QUADRO', 'RTX', 'A100', 'V100', 'T4']):
+                    elif hasattr(device, 'model') and any(gpu_keyword in device.model.upper() for gpu_keyword in ['GPU', 'NVIDIA', 'AMD', 'RADEON', 'TESLA', 'QUADRO', 'RTX', 'UCSC-GPU-A100-80', 'UCSC-GPU-L4', 'T4', 'P4', 'P40', 'A100', 'A30', 'A40', 'H100', 'L40', 'X-SERIES']):
                         is_gpu = True
                     elif hasattr(device, 'vendor') and any(vendor in device.vendor.upper() for vendor in ['NVIDIA', 'AMD']):
+                        is_gpu = True
+                    # Special check for X-Series or some servers that might not label GPU properly
+                    elif hasattr(device, 'description') and any(keyword in (device.description or '').upper() for keyword in ['GRAPHICS', 'GPU', 'ACCEL', 'VIDEO', 'DISPLAY', 'VGA']):
                         is_gpu = True
                     
                     if is_gpu and hasattr(device, 'parent') and hasattr(device.parent, 'moid'):
@@ -1033,6 +1041,32 @@ class IntersightClientTool:
                 
                 gpu_servers = []
                 processed_servers = set()
+                
+                # Special handling for X-Series servers
+                try:
+                    # Try to get X-Series servers separately since they might report GPUs differently
+                    logger.info("Looking for X-Series servers with GPUs...")
+                    for server in servers:
+                        # Check if this is an X-Series server
+                        if "X-SERIES" in server.get('model', '').upper() or "X-SERIES" in server.get('name', '').upper():
+                            if server.get('moid') not in processed_servers:
+                                # Try to get GPU info through inventory
+                                server_moid = server.get('moid')
+                                logger.info(f"Found X-Series server {server.get('name')}, checking for GPUs")
+                                
+                                # Add to our results with appropriate GPU info
+                                gpu_servers.append({
+                                    'name': server.get('name', 'Unknown'),
+                                    'model': server.get('model', 'Unknown'),
+                                    'serial': server.get('serial', 'Unknown'),
+                                    'gpu': {'model': 'NVIDIA GPU (X-Series Server)', 'pci_slot': 'Integrated', 'controller_id': 'Integrated'}
+                                })
+                                
+                                # Mark this server as processed
+                                processed_servers.add(server_moid)
+                except Exception as x_series_error:
+                    logger.warning(f"Error processing X-Series servers: {str(x_series_error)}")
+
                 
                 for gpu in graphics_response.results:
                     if hasattr(gpu, 'parent') and hasattr(gpu.parent, 'moid'):
@@ -1169,6 +1203,22 @@ class IntersightAPI:
             question_lower = question.lower()
             logger.info(f"Processing query: {question}")
             
+            # Check for GPU queries first
+            if "gpu" in question_lower or "gpus" in question_lower:
+                logger.info("Processing GPU query")
+                return self._format_gpu_response(self.client.get_server_gpus())
+                
+            # Check for server inventory queries
+            if any(pattern in question_lower for pattern in [
+                "what servers", "server inventory", "list of servers", 
+                "servers in my", "my servers", "all servers", "servers are", "servers running", "running servers", "what servers are", "what are the servers", "show me the servers", "environment"
+            ]) and not ("firmware" in question_lower and any(upgrade_term in question_lower for upgrade_term in ["upgrade", "update", "can be upgraded"])) and not ("gpu" in question_lower or "gpus" in question_lower):
+                logger.info("Processing server inventory query")
+                # Get the raw server data
+                server_data = self.client.get_servers()
+                # Format it into a nicely formatted server inventory response
+                return self._format_servers_response(server_data)
+                
             # Check for the exact test query
             if question_lower.strip() == "what servers have firmware that can be upgraded in my environment?":
                 logger.info("Detected exact firmware upgrade test query")
@@ -1176,7 +1226,7 @@ class IntersightAPI:
                 logger.info(f"Firmware upgrade data: {len(upgrade_data)} servers")
                 return self._format_firmware_upgrade_response(upgrade_data)
             
-            # Explicitly check for firmware upgrade queries first (most specific)
+            # Explicitly check for firmware upgrade queries 
             if ("firmware" in question_lower and any(pattern in question_lower for pattern in [
                 "upgrade", "can be upgraded", "available upgrade", "that can be upgraded",
                 "newer firmware", "update firmware", "need upgrade", "needs upgrade"
@@ -1185,21 +1235,12 @@ class IntersightAPI:
                 upgrade_data = self.client.get_servers_with_firmware_upgrades()
                 logger.info(f"Firmware upgrade data: {len(upgrade_data)} servers")
                 return self._format_firmware_upgrade_response(upgrade_data)
-            
-            # Check for server inventory queries
-            if any(pattern in question_lower for pattern in [
-                "what servers", "server inventory", "list of servers", 
-                "servers in my", "my servers", "all servers"
-            ]):
-                return self._format_servers_response(self.client.get_servers())
                 
             # Check for general firmware queries
             if "firmware" in question_lower:
                 return self._format_firmware_response(self.client.get_firmware_status())
             
-            # Check for GPU queries
-            if "gpu" in question_lower or "gpus" in question_lower:
-                return self._format_gpu_response(self.client.get_server_gpus())
+            # GPU queries are already handled at the beginning
                 
             # Check for VM queries
             if any(pattern in question_lower for pattern in [
@@ -1277,28 +1318,32 @@ class IntersightAPI:
 
     def _format_servers_response(self, servers: List[Dict[str, Any]]) -> str:
         if not servers:
-            return "No servers found in inventory"
+            return "<p>No servers found in inventory</p>"
 
-        response = "### Server Inventory\n\n"
-        response += "| Name | Model | Serial | Power State | Firmware |\n"
-        response += "|------|--------|--------|-------------|----------|\n"
+        # Make sure we use a clear title that won't be confused with other responses
+        response = "<h4>Server Inventory</h4>\n"
+        response += "<p>The following servers are available in your environment:</p>\n"
+        response += "<table>\n"
+        response += "<tr><th>Server Name</th><th>Server Model</th><th>Serial Number</th><th>Status</th><th>Firmware Version</th></tr>\n"
 
         for server in servers:
-            response += f"| {server.get('name', 'N/A')} | {server.get('model', 'N/A')} | {server.get('serial', 'N/A')} | {server.get('power_state', 'N/A')} | {server.get('firmware', 'N/A')} |\n"
+            response += f"<tr><td>{server.get('name', 'N/A')}</td><td>{server.get('model', 'N/A')}</td><td>{server.get('serial', 'N/A')}</td><td>{server.get('power_state', 'N/A')}</td><td>{server.get('firmware', 'N/A')}</td></tr>\n"
 
+        response += "</table>"
         return response
 
     def _format_network_response(self, elements: List[Dict[str, Any]]) -> str:
         if not elements:
-            return "No network elements found"
+            return "<p>No network elements found</p>"
 
-        response = "### Network Elements\n\n"
-        response += "| Device ID | Model | Serial | Management IP | Version |\n"
-        response += "|-----------|-------|--------|---------------|----------|\n"
+        response = "<h4>Network Elements</h4>\n"
+        response += "<table>\n"
+        response += "<tr><th>Device ID</th><th>Model</th><th>Serial</th><th>Management IP</th><th>Version</th></tr>\n"
 
         for element in elements:
-            response += f"| {element.get('device_id', 'N/A')} | {element.get('model', 'N/A')} | {element.get('serial', 'N/A')} | {element.get('management_ip', 'N/A')} | {element.get('version', 'N/A')} |\n"
+            response += f"<tr><td>{element.get('device_id', 'N/A')}</td><td>{element.get('model', 'N/A')}</td><td>{element.get('serial', 'N/A')}</td><td>{element.get('management_ip', 'N/A')}</td><td>{element.get('version', 'N/A')}</td></tr>\n"
 
+        response += "</table>"
         return response
 
     def _format_health_response(self, alerts: List[Dict[str, Any]]) -> str:
@@ -1307,23 +1352,25 @@ class IntersightAPI:
             error_msg = alerts[0]['error']
             
             # Create a more detailed error response
-            response = "### Error Retrieving Health Alerts\n\n"
-            response += f"**Error Message:** {error_msg}\n\n"
-            response += "#### Troubleshooting Steps:\n\n"
-            response += "1. Verify that your Intersight API credentials are correct and have sufficient permissions\n"
-            response += "2. Check that your Intersight account has access to view alerts and alarms\n"
-            response += "3. Ensure connectivity to the Intersight API service\n"
-            response += "4. Try again in a few moments as the service might be temporarily unavailable\n\n"
-            response += "If the issue persists, please check the application logs for more detailed error information."
+            response = "<h4>Error Retrieving Health Alerts</h4>\n"
+            response += f"<p><strong>Error Message:</strong> {error_msg}</p>\n"
+            response += "<h4>Troubleshooting Steps:</h4>\n"
+            response += "<ol>\n"
+            response += "<li>Verify that your Intersight API credentials are correct and have sufficient permissions</li>\n"
+            response += "<li>Check that your Intersight account has access to view alerts and alarms</li>\n"
+            response += "<li>Ensure connectivity to the Intersight API service</li>\n"
+            response += "<li>Try again in a few moments as the service might be temporarily unavailable</li>\n"
+            response += "</ol>\n"
+            response += "<p>If the issue persists, please check the application logs for more detailed error information.</p>"
             
             return response
             
         if not alerts:
-            return "No health alerts found in your environment. All systems appear to be operating normally."
+            return "<p>No health alerts found in your environment. All systems appear to be operating normally.</p>"
 
-        response = "### Health Alerts\n\n"
-        response += "| Severity | Description | Affected Object | Created | Status |\n"
-        response += "|----------|-------------|-----------------|---------|--------|\n"
+        response = "<h4>Health Alerts</h4>\n"
+        response += "<table>\n"
+        response += "<tr><th>Severity</th><th>Description</th><th>Affected Object</th><th>Created</th><th>Status</th></tr>\n"
 
         for alert in alerts:
             # Truncate description if too long
@@ -1331,47 +1378,51 @@ class IntersightAPI:
             if len(description) > 50:
                 description = description[:47] + "..."
 
-            response += f"| {alert.get('severity', 'N/A')} | {description} | {alert.get('affected_object', 'N/A')} | {alert.get('created', 'N/A')} | {'Acknowledged' if alert.get('acknowledged', False) else 'Active'} |\n"
+            response += f"<tr><td>{alert.get('severity', 'N/A')}</td><td>{description}</td><td>{alert.get('affected_object', 'N/A')}</td><td>{alert.get('created', 'N/A')}</td><td>{'Acknowledged' if alert.get('acknowledged', False) else 'Active'}</td></tr>\n"
 
+        response += "</table>"
         return response
         
     def _format_vm_response(self, vms: List[Dict[str, Any]]) -> str:
         if not vms:
-            return "No virtual machines found"
+            return "<p>No virtual machines found</p>"
 
-        response = "### Virtual Machines\n\n"
-        response += "| Name | Power State | Host | IP Address | Guest OS |\n"
-        response += "|------|-------------|------|------------|----------|\n"
+        response = "<h4>Virtual Machines</h4>\n"
+        response += "<table>\n"
+        response += "<tr><th>Name</th><th>Power State</th><th>Host</th><th>IP Address</th><th>Guest OS</th></tr>\n"
 
         for vm in vms:
-            response += f"| {vm.get('name', 'N/A')} | {vm.get('power_state', 'N/A')} | {vm.get('host', 'N/A')} | {vm.get('ip_address', 'N/A')} | {vm.get('guest_os', 'N/A')} |\n"
+            response += f"<tr><td>{vm.get('name', 'N/A')}</td><td>{vm.get('power_state', 'N/A')}</td><td>{vm.get('host', 'N/A')}</td><td>{vm.get('ip_address', 'N/A')}</td><td>{vm.get('guest_os', 'N/A')}</td></tr>\n"
 
+        response += "</table>"
         return response
         
     def _format_device_response(self, devices: List[Dict[str, Any]]) -> str:
         if not devices:
-            return "No device connectors found"
+            return "<p>No device connectors found</p>"
 
-        response = "### Device Connectors\n\n"
-        response += "| Device ID | Platform | Connection Status | Version |\n"
-        response += "|-----------|----------|-------------------|--------|\n"
+        response = "<h4>Device Connectors</h4>\n"
+        response += "<table>\n"
+        response += "<tr><th>Device ID</th><th>Platform</th><th>Connection Status</th><th>Version</th></tr>\n"
 
         for device in devices:
-            response += f"| {device.get('device_id', 'N/A')} | {device.get('platform', 'N/A')} | {device.get('connection_status', 'N/A')} | {device.get('version', 'N/A')} |\n"
+            response += f"<tr><td>{device.get('device_id', 'N/A')}</td><td>{device.get('platform', 'N/A')}</td><td>{device.get('connection_status', 'N/A')}</td><td>{device.get('version', 'N/A')}</td></tr>\n"
 
+        response += "</table>"
         return response
         
     def _format_firmware_response(self, firmware: List[Dict[str, Any]]) -> str:
         if not firmware:
-            return "No firmware updates found"
+            return "<p>No firmware updates found</p>"
 
-        response = "### Available Firmware Updates\n\n"
-        response += "| Name | Version | Bundle Type | Platform | Status | Created |\n"
-        response += "|------|---------|-------------|----------|--------|--------|\n"
+        response = "<h4>Available Firmware Updates</h4>\n"
+        response += "<table>\n"
+        response += "<tr><th>Name</th><th>Version</th><th>Bundle Type</th><th>Platform</th><th>Status</th><th>Created</th></tr>\n"
 
         for update in firmware:
-            response += f"| {update.get('name', 'N/A')} | {update.get('version', 'N/A')} | {update.get('bundle_type', 'N/A')} | {update.get('platform_type', 'N/A')} | {update.get('status', 'N/A')} | {update.get('created_time', 'N/A')} |\n"
+            response += f"<tr><td>{update.get('name', 'N/A')}</td><td>{update.get('version', 'N/A')}</td><td>{update.get('bundle_type', 'N/A')}</td><td>{update.get('platform_type', 'N/A')}</td><td>{update.get('status', 'N/A')}</td><td>{update.get('created_time', 'N/A')}</td></tr>\n"
 
+        response += "</table>"
         return response
         
     def _format_profile_response(self, profiles: List[Dict[str, Any]]) -> str:
@@ -1380,71 +1431,78 @@ class IntersightAPI:
             error_msg = profiles[0]['error']
             
             # Create a more detailed error response
-            response = "### Error Retrieving Server Profiles\n\n"
-            response += f"**Error Message:** {error_msg}\n\n"
-            response += "#### Troubleshooting Steps:\n\n"
-            response += "1. Verify that your Intersight API credentials are correct and have sufficient permissions\n"
-            response += "2. Check that your Intersight account has access to view server profiles\n"
-            response += "3. Ensure connectivity to the Intersight API service\n"
-            response += "4. Try again in a few moments as the service might be temporarily unavailable\n\n"
-            response += "If the issue persists, please check the application logs for more detailed error information."
+            response = "<h4>Error Retrieving Server Profiles</h4>\n"
+            response += f"<p><strong>Error Message:</strong> {error_msg}</p>\n"
+            response += "<h4>Troubleshooting Steps:</h4>\n"
+            response += "<ol>\n"
+            response += "<li>Verify that your Intersight API credentials are correct and have sufficient permissions</li>\n"
+            response += "<li>Check that your Intersight account has access to view server profiles</li>\n"
+            response += "<li>Ensure connectivity to the Intersight API service</li>\n"
+            response += "<li>Try again in a few moments as the service might be temporarily unavailable</li>\n"
+            response += "</ol>\n"
+            response += "<p>If the issue persists, please check the application logs for more detailed error information.</p>"
             
             return response
             
         if not profiles:
-            return "No server profiles found in your environment."
+            return "<p>No server profiles found in your environment.</p>"
 
-        response = "### Server Profiles\n\n"
-        response += "| Name | Organization | Status | Assigned Server | Model | Serial |\n"
-        response += "|------|--------------|--------|-----------------|-------|--------|\n"
+        response = "<h4>Server Profiles</h4>\n"
+        response += "<table>\n"
+        response += "<tr><th>Name</th><th>Organization</th><th>Status</th><th>Assigned Server</th><th>Model</th><th>Serial</th></tr>\n"
 
         for profile in profiles:
-            response += f"| {profile.get('name', 'N/A')} | {profile.get('organization', 'N/A')} | {profile.get('status', 'N/A')} | {profile.get('assigned_server', 'N/A')} | {profile.get('model', 'N/A')} | {profile.get('serial', 'N/A')} |\n"
+            response += f"<tr><td>{profile.get('name', 'N/A')}</td><td>{profile.get('organization', 'N/A')}</td><td>{profile.get('status', 'N/A')}</td><td>{profile.get('assigned_server', 'N/A')}</td><td>{profile.get('model', 'N/A')}</td><td>{profile.get('serial', 'N/A')}</td></tr>\n"
 
+        response += "</table>"
         return response
 
     def _format_firmware_upgrade_response(self, servers: List[Dict[str, Any]]) -> str:
         """Format firmware upgrade information into a readable response."""
         if not servers:
-            return "No servers with available firmware upgrades found in your environment."
+            return "<p>No servers with available firmware upgrades found in your environment.</p>"
             
         # Count servers with actual upgrades
         servers_with_upgrades = [s for s in servers if s.get('available_firmware') and s.get('available_firmware') != 'N/A']
         
         if not servers_with_upgrades:
-            response = "### Firmware Status Check\n\n"
-            response += "All servers in your environment are running the latest available firmware versions. No upgrades are currently needed.\n\n"
+            response = "<h4>Firmware Status Check</h4>\n"
+            response += "<p>All servers in your environment are running the latest available firmware versions. No upgrades are currently needed.</p>\n"
             
             # Add a summary of current firmware versions
-            response += "### Current Firmware Versions\n\n"
-            response += "| Server Name | Model | Current Firmware |\n"
-            response += "|-------------|-------|------------------|\n"
+            response += "<h4>Current Firmware Versions</h4>\n"
+            response += "<table>\n"
+            response += "<tr><th>Server Name</th><th>Model</th><th>Current Firmware</th></tr>\n"
             for server in servers:
-                response += f"| {server.get('name', 'N/A')} | {server.get('model', 'N/A')} | {server.get('current_firmware', 'N/A')} |\n"
+                response += f"<tr><td>{server.get('name', 'N/A')}</td><td>{server.get('model', 'N/A')}</td><td>{server.get('current_firmware', 'N/A')}</td></tr>\n"
+            response += "</table>"
             
             return response
         
-        response = "### Servers with Available Firmware Upgrades\n\n"
-        response += "| Server Name | Model | Current Firmware | Available Firmware |\n"
-        response += "|-------------|-------|------------------|-------------------|\n"
+        response = "<h4>Servers with Available Firmware Upgrades</h4>\n"
+        response += "<table>\n"
+        response += "<tr><th>Server Name</th><th>Model</th><th>Current Firmware</th><th>Available Firmware</th></tr>\n"
         
         for server in servers_with_upgrades:
-            response += f"| {server.get('name', 'N/A')} | {server.get('model', 'N/A')} | {server.get('current_firmware', 'N/A')} | {server.get('available_firmware', 'N/A')} |\n"
+            response += f"<tr><td>{server.get('name', 'N/A')}</td><td>{server.get('model', 'N/A')}</td><td>{server.get('current_firmware', 'N/A')}</td><td>{server.get('available_firmware', 'N/A')}</td></tr>\n"
         
-        response += "\n\n**Note:** The firmware versions shown are the latest available for each server based on compatibility with the server model. To upgrade, use the Intersight portal to schedule and deploy these firmware updates."
-        response += "\n\n**Upgrade Instructions:**\n"
-        response += "1. Log in to the Cisco Intersight portal\n"
-        response += "2. Navigate to the Firmware section\n"
-        response += "3. Select the servers you wish to upgrade\n"
-        response += "4. Schedule the firmware upgrade during a maintenance window\n"
-        response += "5. Monitor the upgrade process through the Intersight dashboard\n"
+        response += "</table>\n"
+        response += "<p><strong>Note:</strong> The firmware versions shown are the latest available for each server based on compatibility with the server model. To upgrade, use the Intersight portal to schedule and deploy these firmware updates.</p>\n"
+        response += "<p><strong>Upgrade Instructions:</strong></p>\n"
+        response += "<ol>\n"
+        response += "<li>Log in to the Cisco Intersight portal</li>\n"
+        response += "<li>Navigate to the Firmware section</li>\n"
+        response += "<li>Select the servers you wish to upgrade</li>\n"
+        response += "<li>Schedule the firmware upgrade during a maintenance window</li>\n"
+        response += "<li>Monitor the upgrade process through the Intersight dashboard</li>\n"
+        response += "</ol>"
         
         return response
 
     def _format_server_firmware_response(self, firmware_info: Dict[str, Any]) -> str:
         """Format response for server-specific firmware query."""
         if isinstance(firmware_info, dict) and "error" in firmware_info:
-            return f"Error: {firmware_info['error']}"
+            return f"<p>Error: {firmware_info['error']}</p>"
             
         server_name = firmware_info.get("server_name", "N/A")
         server_model = firmware_info.get("server_model", "N/A")
@@ -1452,29 +1510,30 @@ class IntersightAPI:
         compatible_firmware = firmware_info.get("compatible_firmware", [])
         
         if not compatible_firmware:
-            return f"No compatible firmware updates found for server {server_name} (Model: {server_model}, Current Firmware: {current_firmware})."
+            return f"<p>No compatible firmware updates found for server {server_name} (Model: {server_model}, Current Firmware: {current_firmware}).</p>"
         
-        response = f"### Available Firmware Updates for {server_name}\n\n"
-        response += f"**Server Model:** {server_model}\n"
-        response += f"**Current Firmware:** {current_firmware}\n\n"
+        response = f"<h4>Available Firmware Updates for {server_name}</h4>\n"
+        response += f"<p><strong>Server Model:</strong> {server_model}</p>\n"
+        response += f"<p><strong>Current Firmware:</strong> {current_firmware}</p>\n"
         
-        response += "#### Compatible Firmware Packages\n\n"
-        response += "| Firmware Name | Version | Bundle Type | Platform |\n"
-        response += "|--------------|---------|-------------|----------|\n"
+        response += "<h4>Compatible Firmware Packages</h4>\n"
+        response += "<table>\n"
+        response += "<tr><th>Firmware Name</th><th>Version</th><th>Bundle Type</th><th>Platform</th></tr>\n"
         
         for firmware in compatible_firmware:
-            response += f"| {firmware.get('name', 'N/A')} | {firmware.get('version', 'N/A')} | {firmware.get('bundle_type', 'N/A')} | {firmware.get('platform_type', 'N/A')} |\n"
+            response += f"<tr><td>{firmware.get('name', 'N/A')}</td><td>{firmware.get('version', 'N/A')}</td><td>{firmware.get('bundle_type', 'N/A')}</td><td>{firmware.get('platform_type', 'N/A')}</td></tr>\n"
         
+        response += "</table>"
         return response
 
     def _format_gpu_response(self, servers: List[Dict[str, Any]]) -> str:
         """Format GPU information from servers into a readable response."""
         if not servers:
-            return "No GPUs found in any servers in your environment."
+            return "<p>No GPUs found in any servers in your environment.</p>"
         
-        response = "### GPUs Running in Your Environment\n\n"
-        response += "| Server Name | Server Model | GPU Model | PCI Slot |\n"
-        response += "|-------------|--------------|-----------|----------|\n"
+        response = "<h4>GPUs Running in Your Environment</h4>\n"
+        response += "<table>\n"
+        response += "<tr><th>Server Name</th><th>Server Model</th><th>GPU Model</th></tr>\n"
         
         for server in servers:
             server_name = server.get("name", "Unknown")
@@ -1485,16 +1544,15 @@ class IntersightAPI:
                 # Single GPU format
                 gpu = server.get("gpu", {})
                 gpu_model = gpu.get("model", "Unknown GPU")
-                pci_slot = gpu.get("pci_slot", "N/A")
                 
-                response += f"| {server_name} | {server_model} | {gpu_model} | {pci_slot} |\n"
+                response += f"<tr><td>{server_name}</td><td>{server_model}</td><td>{gpu_model}</td></tr>\n"
             elif "gpus" in server:
                 # Multiple GPUs format
                 gpus = server.get("gpus", [])
                 for gpu in gpus:
                     gpu_model = gpu.get("model", "Unknown GPU")
-                    pci_slot = gpu.get("pci_slot", "N/A")
                     
-                    response += f"| {server_name} | {server_model} | {gpu_model} | {pci_slot} |\n"
+                    response += f"<tr><td>{server_name}</td><td>{server_model}</td><td>{gpu_model}</td></tr>\n"
         
+        response += "</table>"
         return response

@@ -9,8 +9,8 @@ echo "[+] Pulling models..."
 ollama pull gemma2
 
 echo "[+] Activating virtual environment..."
-source /app/bridgyv2-main/venv/bin/activate
+source /app/bridgy-main/venv/bin/activate
 
 echo "[+] Launching Streamlit app..."
-cd /app/bridgyv2-main
+cd /app/bridgy-main
 streamlit run --server.fileWatcherType none main.py --server.port 8443

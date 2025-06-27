@@ -3,7 +3,7 @@
 set -e
 
 INSTALL_DIR="$HOME/bridgy"
-IMAGE_NAME="bridgyv2-app"
+IMAGE_NAME="bridgy-app"
 
 echo "⚠️  This will remove Bridgy, its Docker image, and related setup."
 

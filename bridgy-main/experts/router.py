@@ -10,13 +10,17 @@ from .infrastructure_expert import InfrastructureExpert
 import logging
 from config import setup_langsmith
 
+# Configure logging
+logging.basicConfig(level=logging.DEBUG)
 logger = logging.getLogger(__name__)
+
 
 # Initialize LangSmith
 setup_langsmith()
 
 class ExpertRouter:
     def __init__(self):
+        logger.error("initialize Expert Router")
         self.llm = OllamaLLM(
             model="gemma2",  # Using local gemma2al model
             base_url="http://localhost:11434",
@@ -56,22 +60,27 @@ class ExpertRouter:
            - Cisco Nexus Dashboard platform
            - Data center networking telemetry and monitoring
            - Network fabric management
-           - Network device status and health
+           - Specific switch configurations or technical details
            - Network automation workflows
-           - Nexus switches, fabrics, or dashboard-specific questions
+           - Nexus switches configuration or technical dashboard-specific questions
         4. Infrastructure Expert: For questions that span multiple systems:
            - Questions about both Intersight AND Nexus Dashboard
-           - Questions about "switches" or "network devices" that need data from both systems
+           - Questions about switches or network devices inventory
+           - ANY questions about "what switches are in my environment" or "switches in my environment"
+           - ANY questions about "show me my switches" or switch inventory listing
            - Questions that require coordinated information from multiple infrastructure sources
-           - ONLY questions about "switches running in my environment" (not servers)
         5. General Expert: For general Cisco knowledge questions that don't relate to specific infrastructure
 
-        IMPORTANT: Any question about servers, server inventory, or "what servers are running" should go to the Intersight Expert, NOT the Infrastructure Expert.
+        IMPORTANT ROUTING RULES:
+        - Any question about server inventory or "what servers are running" goes to the Intersight Expert
+        - Any question about switch inventory or "what switches are in my environment" goes to the Infrastructure Expert
+        - Technical switch configuration questions go to the Nexus Dashboard Expert
 
         Question: {question}
 
         Respond with just the expert name: "intersight", "ai_pods", "nexus_dashboard", "infrastructure", or "general"
         """)
+
 
         # Create router chain using the new RunnableSequence pattern
         self.router_chain = self.router_prompt | self.llm
@@ -187,13 +196,18 @@ class ExpertRouter:
 
         except Exception as e:
             logger.error(f"Error in chain of thought: {str(e)}")
+            # First check if it's an infrastructure query - this includes switch inventory queries
             if self._is_infrastructure_query(query):
                 return "infrastructure"
+            # Then check for Intersight queries
             elif "intersight" in query.lower() or any(word in query.lower() for word in ["server", "servers", "hardware", "datacenter"]):
                 return "intersight"
+            # Then check for AI Pods queries
             elif "ai pods" in query.lower() or "ai pod" in query.lower() or any(word in query.lower() for word in ["llm", "model", "parameter", "parameters"]) or any(size in query.lower() for size in ["7b", "13b", "40b", "70b", "80b"]):
                 return "ai_pods"
-            elif "nexus" in query.lower() or "dashboard" in query.lower() or any(word in query.lower() for word in ["fabric", "switch", "network", "telemetry"]):
+            # Only route to Nexus Dashboard if not an infrastructure query but contains nexus/switch terms
+            elif "nexus" in query.lower() or "dashboard" in query.lower() or any(word in query.lower() for word in ["fabric", "telemetry"]) or \
+                 (any(word in query.lower() for word in ["switch", "network"]) and not "environment" in query.lower()):
                 return "nexus_dashboard"
             else:
                 return "general"
@@ -371,12 +385,15 @@ class ExpertRouter:
         # Check for switch-related queries that might span multiple systems
         switch_patterns = [
             "switches" in query_lower and "environment" in query_lower,
+            "switch" in query_lower and "environment" in query_lower,
             "switches" in query_lower and "running" in query_lower,
+            "switch" in query_lower and "running" in query_lower,
+            "what switches" in query_lower,
             "network device" in query_lower and "environment" in query_lower
         ]
         
         # Exclude fabric-related queries as they should go to Nexus Dashboard Expert
-        if "fabric" in query_lower or "vlan" in query_lower:
+        if ("fabric" in query_lower or "vlan" in query_lower) and not "environment" in query_lower:
             return False
             
         # Exclude server-related queries as they should go to Intersight Expert

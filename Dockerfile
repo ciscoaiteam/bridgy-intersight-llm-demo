@@ -44,24 +44,24 @@ ENV OLLAMA_MODELS=/config/ollama
 WORKDIR /app
 
 # Copy project files
-COPY ./bridgyv2-main /app/bridgyv2-main
+COPY ./bridgy-main /app/bridgy-main
 COPY ./entrypoint.sh /app/entrypoint.sh
 
 # Set up Python venv and conditionally install GPU or CPU torch packages
 RUN ARCH=$(uname -m) && \
-    python3.10 -m venv /app/bridgyv2-main/venv && \
-    chmod -R +x /app/bridgyv2-main/venv/bin && \
-    /app/bridgyv2-main/venv/bin/python -m pip install --upgrade pip && \
+    python3.10 -m venv /app/bridgy-main/venv && \
+    chmod -R +x /app/bridgy-main/venv/bin && \
+    /app/bridgy-main/venv/bin/python -m pip install --upgrade pip && \
     if [ "$ARCH" = "x86_64" ]; then \
         echo "Running on x86_64, installing CUDA version of torch..." && \
         rm -rf /usr/lib/x86_64-linux-gnu/libcudnn* /usr/local/cuda/lib64/libcudnn* && \
-        /app/bridgyv2-main/venv/bin/python -m pip install torch==2.2.1+cu121 --index-url https://download.pytorch.org/whl/cu121 && \
-        /app/bridgyv2-main/venv/bin/python -m pip install -r /app/bridgyv2-main/requirements.txt && \
-        /app/bridgyv2-main/venv/bin/python -m pip install -r /app/bridgyv2-main/gpurequirements.txt; \
+        /app/bridgy-main/venv/bin/python -m pip install torch==2.2.1+cu121 --index-url https://download.pytorch.org/whl/cu121 && \
+        /app/bridgy-main/venv/bin/python -m pip install -r /app/bridgy-main/requirements.txt && \
+        /app/bridgy-main/venv/bin/python -m pip install -r /app/bridgy-main/gpurequirements.txt; \
     else \
         echo "Not running on x86_64, installing CPU-only packages..." && \
-        /app/bridgyv2-main/venv/bin/python -m pip install torch==2.2.1 && \
-        /app/bridgyv2-main/venv/bin/python -m pip install -r /app/bridgyv2-main/requirements.txt; \
+        /app/bridgy-main/venv/bin/python -m pip install torch==2.2.1 && \
+        /app/bridgy-main/venv/bin/python -m pip install -r /app/bridgy-main/requirements.txt; \
     fi
 
 RUN chmod +x /app/entrypoint.sh

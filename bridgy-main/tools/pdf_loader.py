@@ -9,6 +9,8 @@ from langchain_community.vectorstores import FAISS
 # from langchain_huggingface import HuggingFaceEmbeddings # Updated to use local embeddings
 from langchain_community.embeddings import HuggingFaceEmbeddings
 
+# Configure logging
+logging.basicConfig(level=logging.DEBUG)
 logger = logging.getLogger(__name__)
 
 class PDFLoader:

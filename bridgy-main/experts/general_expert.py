@@ -4,6 +4,11 @@ from langchain_openai import ChatOpenAI
 from langchain.prompts import ChatPromptTemplate
 from langchain_core.runnables import RunnableSequence
 from config import setup_langsmith
+import logging
+
+# Configure logging
+logging.basicConfig(level=logging.DEBUG)
+logger = logging.getLogger(__name__)
 
 class GeneralExpert:
     def __init__(self):
@@ -19,7 +24,17 @@ class GeneralExpert:
 
         Question: {question}
 
-        Provide a detailed response:
+        FORMAT INSTRUCTIONS:
+        Format your response in HTML instead of Markdown. Use appropriate HTML tags like:
+        - <h4> for headings
+        - <p> for paragraphs
+        - <ul>, <ol>, <li> for lists
+        - <code> for code snippets
+        - <b>, <i>, <u> for text formatting
+        - <table>, <tr>, <th>, <td> for tables
+        - <a href="URL">link text</a> for links
+        
+        Provide a detailed response formatted in HTML:
         """)
 
         # Create chain using the new RunnableSequence pattern

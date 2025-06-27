@@ -6,6 +6,8 @@ from tools.nexus_dashboard_api import NexusDashboardAPI
 from config import setup_langsmith
 import logging
 
+# Configure logging
+logging.basicConfig(level=logging.DEBUG)
 logger = logging.getLogger(__name__)
 
 class NexusDashboardExpert:
@@ -24,7 +26,49 @@ class NexusDashboardExpert:
         Question: {question}
         API Response: {api_response}
 
-        Provide a concise technical response.
+        FORMAT INSTRUCTIONS:
+        Format your response in HTML instead of Markdown. Use appropriate HTML tags like:
+        - <h4> for headings
+        - <p> for paragraphs
+        - <ul>, <ol>, <li> for lists
+        - <code> for code snippets
+        - <b>, <i>, <u> for text formatting
+        - <table>, <tr>, <th>, <td> for tables with proper structure
+        - <a href="URL">link text</a> for links
+
+        SPECIAL FORMATTING FOR SPECIFIC QUERIES:
+        1. For syslog IP address questions, ONLY provide the following format:
+           <h4>Syslog IP Address</h4>
+           <p>The syslog IP address for your network is [IP_ADDRESS].</p>
+           Do not include any other information like trap IP, management IP, or configuration analysis.
+           
+        2. For general fabric-related questions ("What fabrics am I running?", "What fabrics are in my environment?"), use the following format:
+           <h4>Fabrics in Your Environment</h4>
+           <p>There are [number] fabric(s) in your environment.</p>
+           
+           <h4>Fabric Details</h4>
+           [Fabric information in table or list format]
+
+        3. For MSD Association or multisite-related questions:
+           <h4>Fabric Associations</h4>
+           <p>There are [number] MSD association(s) in your environment.</p>
+           
+           <table>
+           [Table showing Source Fabric → Target Fabric associations with their names]
+           </table>
+           
+           Do NOT include general fabric details or inventory information unless specifically requested.
+           If there are no associations, clearly state: "There are no MSD associations in your fabric."
+        
+        GLOBAL RULES FOR ALL RESPONSES:
+        1. NEVER repeat the question in your answer
+        2. Use <h4> for section headers within responses (like "Fabric Details", "Switch Information", etc.)
+        3. Get straight to the point with direct, concise answers
+        4. Do not mention that you're using API response data in your answer
+        5. For MSD Association questions, ONLY show actual association data (which fabrics are connected to which), not general fabric information
+        6. NEVER include generic tables that don't directly answer the question
+        
+        For all questions, provide a concise technical response formatted in HTML.
         """)
 
         # Create chain using the RunnableSequence pattern

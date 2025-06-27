@@ -7,9 +7,9 @@ echo "🚀 Bridgy Setup Starting..."
 
 INSTALL_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 CONFIG_DIR="$INSTALL_DIR/config"
-ENV_FILE="$CONFIG_DIR/.env"
-PEM_FILE="$CONFIG_DIR/intersight.pem"
-IMAGE_NAME="bridgyv2-app"
+ENV_FILE="$INSTALL_DIR/.env"
+PEM_FILE="$INSTALL_DIR/intersight.pem"
+IMAGE_NAME="bridgy-app"
 REPO_URL="https://github.com/ciscoaiteam/bridgy-intersight-llm-demo.git"
 
 
@@ -35,7 +35,7 @@ if [ ! -f "$ENV_FILE" ]; then
 # LangSmith Configuration
 LANGSMITH_ENDPOINT="https://api.smith.langchain.com"
 LANGSMITH_API_KEY=your_langsmith_api_key_here
-LANGSMITH_PROJECT="bridgyv2"
+LANGSMITH_PROJECT="bridgy"
 
 # Intersight Configuration
 INTERSIGHT_API_KEY=your_intersight_api_key_id_here
@@ -85,9 +85,9 @@ SHELL_RC="$HOME/.bashrc"
 
 ARCH=$(uname -m) && \
     if [ "$ARCH" = "x86_64" ]; then \
-        ALIAS_CMD="alias bridgy-start='docker run --rm -it --gpus all -v ./config:/config -p 8443:8443  --env-file ./config/.env $IMAGE_NAME'"
+        ALIAS_CMD="alias bridgy-start='docker run --rm -it --gpus all -v $PEM_FILE:/config/intersight.pem -v $ENV_FILE:/.env -p 8443:8443 --env-file $ENV_FILE $IMAGE_NAME'"
     else \
-        ALIAS_CMD="alias bridgy-start='docker run --rm -it -v ./config:/config -p 8443:8443  --env-file ./config/.env $IMAGE_NAME'"
+        ALIAS_CMD="alias bridgy-start='docker run --rm -it -v $PEM_FILE:/config/intersight.pem -v $ENV_FILE:/.env -p 8443:8443 --env-file $ENV_FILE $IMAGE_NAME'"
     fi
 
 if ! grep -Fq "alias bridgy-start=" "$SHELL_RC"; then

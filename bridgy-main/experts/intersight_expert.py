@@ -7,6 +7,8 @@ from config import setup_langsmith
 import re
 import logging
 
+# Configure logging
+logging.basicConfig(level=logging.DEBUG)
 logger = logging.getLogger(__name__)
 
 class IntersightExpert:
@@ -32,7 +34,29 @@ class IntersightExpert:
         4. If the API response contains "Available Firmware Updates for [server]" or similar headings, maintain this structure in your response.
         5. Provide factual information based on the API response rather than speculative analysis.
 
-        Provide a detailed and technical response:
+        FORMAT INSTRUCTIONS:
+        Format your response in HTML instead of Markdown. Use appropriate HTML tags like:
+        - <h4> for headings
+        - <p> for paragraphs
+        - <ul>, <ol>, <li> for lists
+        - <code> for code snippets
+        - <b>, <i>, <u> for text formatting
+        - <table>, <tr>, <th>, <td> for tables with proper structure
+        - <a href="URL">link text</a> for links
+        
+        For tables, use the following structure:
+        <table>
+          <tr>
+            <th>Header 1</th>
+            <th>Header 2</th>
+          </tr>
+          <tr>
+            <td>Data 1</td>
+            <td>Data 2</td>
+          </tr>
+        </table>
+
+        Provide a detailed and technical response formatted in HTML:
         """)
 
         # Create chain using the new RunnableSequence pattern
@@ -40,11 +64,29 @@ class IntersightExpert:
 
     def get_response(self, question: str) -> str:
         try:
-            # Check if this is a firmware-related query for a specific server
-            is_firmware_query = any(term in question.lower() for term in ["firmware", "update", "upgrade"])
-            
-            # Check if this is a GPU-related query
+            # First check if this is a GPU-related query - this takes priority
             is_gpu_query = any(term in question.lower() for term in ["gpu", "graphics card", "nvidia", "amd", "video card", "accelerator", "cuda", "graphics processing", "gpus", "graphics cards"])
+            if is_gpu_query:
+                logger.info(f"Detected GPU query: {question}")
+                # Process GPU query immediately
+                try:
+                    # Get GPU information directly
+                    if hasattr(self.api.client, 'get_server_gpus'):
+                        gpu_servers = self.api.client.get_server_gpus()
+                        if isinstance(gpu_servers, list) and gpu_servers:
+                            # Format GPU information into a readable response
+                            if hasattr(self.api, '_format_gpu_response'):
+                                api_response = self.api._format_gpu_response(gpu_servers)
+                                logger.info(f"Generated GPU response using API formatter")
+                                return api_response
+                            
+                    # If we get here, something went wrong with GPU processing
+                    logger.error("Could not process GPU query directly, falling back to general handling")
+                except Exception as gpu_error:
+                    logger.error(f"Error in initial GPU query processing: {str(gpu_error)}")
+            
+            # Then check if this is a firmware-related query
+            is_firmware_query = any(term in question.lower() for term in ["firmware", "update", "upgrade"])
             
             # Extract server name for firmware queries
             server_name = None
@@ -90,21 +132,28 @@ class IntersightExpert:
                     logger.error(f"Error getting firmware directly: {str(firmware_error)}")
                     # Continue with normal flow if direct method fails
             
-            # For GPU queries, directly call the GPU method
-            if is_gpu_query:
-                logger.info(f"Directly handling GPU query")
+            # Check for server inventory queries
+            is_server_inventory_query = any(pattern in question.lower() for pattern in [
+                "what servers", "server inventory", "list of servers", 
+                "servers in my", "my servers", "all servers", "servers are", "servers running", 
+                "running servers", "what servers are", "what are the servers", "show me the servers", "environment"
+            ]) and not ("firmware" in question.lower() and any(term in question.lower() for term in ["upgrade", "update", "can be upgraded"])) and not is_gpu_query
+            
+            # For server inventory queries, directly handle them
+            if is_server_inventory_query:
+                logger.info(f"Directly handling server inventory query")
                 try:
-                    # Get GPU information directly
-                    if hasattr(self.api.client, 'get_server_gpus'):
-                        gpu_servers = self.api.client.get_server_gpus()
-                        if not isinstance(gpu_servers, dict) or "error" not in gpu_servers:
-                            # Use the API's formatting method
-                            api_response = self.api.query(question)
-                            logger.info(f"Generated GPU response")
-                            return api_response
-                except Exception as gpu_error:
-                    logger.error(f"Error getting GPU information directly: {str(gpu_error)}")
+                    server_data = self.api.client.get_servers()
+                    if isinstance(server_data, list) and server_data:
+                        api_response = self.api._format_servers_response(server_data)
+                        logger.info(f"Generated server inventory response")
+                        return api_response
+                except Exception as server_error:
+                    logger.error(f"Error getting server inventory directly: {str(server_error)}")
                     # Continue with normal flow if direct method fails
+                    
+            # GPU queries are already handled at the beginning of the function
+            # No need to check for them again here
             
             # Get API response through the normal query method
             api_response = self.api.query(question)
@@ -113,7 +162,7 @@ class IntersightExpert:
             if is_firmware_query and server_name and "## Available Firmware Updates for" in api_response:
                 # If we have a well-formatted firmware response, return it directly
                 return api_response
-            
+
             # Otherwise, use the LLM to interpret the response
 
             response = self.chain.invoke({
@@ -162,4 +211,35 @@ class IntersightExpert:
         for firmware in compatible_firmware:
             response += f"| {firmware.get('name', 'N/A')} | {firmware.get('version', 'N/A')} | {firmware.get('bundle_type', 'N/A')} | {firmware.get('platform_type', 'N/A')} |\n"
         
+        return response
+        
+    def _format_gpu_response(self, gpu_servers: list) -> str:
+        """Format GPU information from servers into a readable response."""
+        if not gpu_servers:
+            return "## GPUs in Environment\n\nNo servers with GPUs were found in your environment."
+        
+        response = "## GPUs in Environment\n\n"
+        response += "The following GPUs are running in your environment:\n\n"
+        response += "| Server Name | Server Model | GPU Model |\n"
+        response += "|-------------|-------------|-----------|\n"
+        
+        gpu_count = 0
+        for server in gpu_servers:
+            server_name = server.get("name", "N/A")
+            server_model = server.get("model", "N/A")
+            
+            gpus = server.get("gpus", [])
+            if not gpus:
+                continue
+                
+            for gpu in gpus:
+                gpu_count += 1
+                gpu_model = gpu.get("model", "N/A")
+                # Remove memory and status from output
+                
+                response += f"| {server_name} | {server_model} | {gpu_model} |\n"
+        
+        if gpu_count == 0:
+            response = "## GPUs in Environment\n\nNo GPUs were detected in any of your servers."
+            
         return response

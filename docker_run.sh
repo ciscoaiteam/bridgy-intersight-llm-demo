@@ -7,24 +7,44 @@ echo "🚀 Bridgy Setup Starting..."
 
 INSTALL_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 CONFIG_DIR="$INSTALL_DIR/config"
-ENV_FILE="$CONFIG_DIR/.env"
-PEM_FILE="$CONFIG_DIR/intersight.pem"
-IMAGE_NAME="ghcr.io/amac00/bridgyv2-app:latest"
+ENV_FILE="$INSTALL_DIR/.env"
+PEM_FILE="$INSTALL_DIR/intersight.pem"
+IMAGE_NAME="ghcr.io/amac00/bridgy-app:latest"
+ENV_EXAMPLE="$INSTALL_DIR/.env_example"
 
 mkdir -p "$CONFIG_DIR"
 
-# 2. Create .env template if missing
+# 2. Create .env from example template if missing
 if [ ! -f "$ENV_FILE" ]; then
-  cat > "$ENV_FILE" <<EOF
+  if [ -f "$ENV_EXAMPLE" ]; then
+    cp "$ENV_EXAMPLE" "$ENV_FILE"
+    echo "[+] Created .env from example template at $ENV_FILE"
+  else
+    cat > "$ENV_FILE" <<EOF
+# Bridgy AI Assistant Environment Configuration File
+
 # LangSmith Configuration
 LANGSMITH_ENDPOINT="https://api.smith.langchain.com"
 LANGSMITH_API_KEY=your_langsmith_api_key_here
-LANGSMITH_PROJECT="bridgyv2"
+LANGSMITH_PROJECT="bridgy"
+LANGSMITH_TRACING=true
 
 # Intersight Configuration
 INTERSIGHT_API_KEY=your_intersight_api_key_id_here
+INTERSIGHT_SECRET_KEY_PATH=$PEM_FILE
+
+# Nexus Dashboard credentials
+NEXUS_DASHBOARD_URL=https://your-nexus-dashboard-url
+NEXUS_DASHBOARD_USERNAME=your_username
+NEXUS_DASHBOARD_PASSWORD=your_password
+NEXUS_DASHBOARD_DOMAIN=local
+
+# LLM Configuration
+OLLAMA_API_URL=http://localhost:11434/api/chat
+DEFAULT_MODEL=gemma2
 EOF
-  echo "[+] .env template created at $ENV_FILE"
+    echo "[+] Created new .env template at $ENV_FILE"
+  fi
 else
   echo "[i] .env file already exists at $ENV_FILE"
 fi
@@ -60,7 +80,7 @@ docker pull "$IMAGE_NAME"
 SHELL_RC="$HOME/.bashrc"
 [ -n "$ZSH_VERSION" ] && SHELL_RC="$HOME/.zshrc"
 
-ALIAS_CMD="alias bridgy-start='docker run --rm -it --gpus all -v $CONFIG_DIR:/config --env-file /config/.env -p 8443:8443 $IMAGE_NAME'"
+ALIAS_CMD="alias bridgy-start='docker run --rm -it --gpus all -v $PEM_FILE:/config/intersight.pem -v $ENV_FILE:/.env --env-file $ENV_FILE -p 8443:8443 $IMAGE_NAME'"
 if ! grep -Fq "alias bridgy-start=" "$SHELL_RC"; then
   echo "$ALIAS_CMD" >> "$SHELL_RC"
   echo "[+] Added 'bridgy-start' alias to $SHELL_RC"
