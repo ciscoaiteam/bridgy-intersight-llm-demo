@@ -1,0 +1,122 @@
+# Default values for bridgy Helm chart
+replicaCount: 1
+
+# Main application image settings
+image:
+  repository: amac00/bridgy-app
+  pullPolicy: IfNotPresent
+  tag: "latest"
+
+# API component settings
+api:
+  replicaCount: 1
+  image:
+    repository: "bridgy-api"
+    pullPolicy: IfNotPresent
+    tag: "latest"
+  service:
+    type: ClusterIP
+    port: 5000
+  resources:
+    limits:
+      cpu: 500m
+      memory: 512Mi
+    requests:
+      cpu: 200m
+      memory: 256Mi
+  podSecurityContext: {}
+  securityContext: {}
+  nodeSelector: {}
+  tolerations: []
+  affinity: {}
+  environment:
+    # Additional API-specific environment variables can be added here
+
+imagePullSecrets: []
+nameOverride: ""
+fullnameOverride: ""
+
+serviceAccount:
+  create: true
+  annotations: {}
+  name: ""
+
+podAnnotations: {}
+podSecurityContext: {}
+securityContext: {}
+
+service:
+  type: ClusterIP
+  port: 8443
+
+ingress:
+  enabled: false
+  className: ""
+  annotations: {}
+  hosts:
+    - host: chart-example.local
+      paths:
+        - path: /
+          pathType: ImplementationSpecific
+  tls: []
+
+resources:
+  limits:
+    cpu: 4
+    memory: 8Gi
+    # For GPU support, uncomment the following line
+    # nvidia.com/gpu: 1
+  requests:
+    cpu: 2
+    memory: 4Gi
+
+# Persistent storage for Ollama models
+persistence:
+  enabled: true
+  storageClass: ""
+  size: 20Gi
+  accessMode: ReadWriteOnce
+
+# Environment variables
+environment:
+  # Common environment variables
+  LANGSMITH_TRACING: "true"
+  LANGSMITH_PROJECT: "bridgy"
+  DEFAULT_MODEL: "gemma2"
+  INTERSIGHT_SECRET_KEY_PATH: "/app/bridgy-main/intersight.pem"
+  
+  # Secure environment variables that should be set in secrets
+  # These will be shown as placeholders in values.yaml but should be provided
+  # through a secure method (e.g., Kubernetes secrets or Helm --set)
+  secure:
+    # Intersight credentials
+    INTERSIGHT_API_KEY: ""
+    
+    # Nexus Dashboard credentials
+    NEXUS_DASHBOARD_URL: ""
+    NEXUS_DASHBOARD_USERNAME: ""
+    NEXUS_DASHBOARD_PASSWORD: ""
+    NEXUS_DASHBOARD_DOMAIN: "local"
+    
+    # LangSmith Configuration (Optional)
+    LANGSMITH_ENDPOINT: "https://api.smith.langchain.com"
+    LANGSMITH_API_KEY: ""
+    
+    # Remote LLM Service
+    LLM_BASE_URL: ""
+    LLM_API_KEY: ""
+
+# PEM file content for Intersight authentication
+# This should be provided through a secure method
+intersightSecretKey: ""
+
+# SSL Certificate configuration
+ssl:
+  enabled: false
+  # Base64 encoded certificate and key
+  cert: ""
+  key: ""
+
+nodeSelector: {}
+tolerations: []
+affinity: {}

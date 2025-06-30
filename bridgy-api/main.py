@@ -77,6 +77,11 @@ class OllamaProcessingError(OllamaServiceError):
         super().__init__(message, status_code=500)
 
 # --- API Routes ---
+@app.get("/health", tags=["Monitoring"])
+async def health_check():
+    """Health check endpoint for Kubernetes probes."""
+    return {"status": "healthy"}
+
 @app.post("/api/chat", response_model=ChatResponse, tags=["Chat"])
 async def chat_handler(chat_request: ChatRequest):
     """

@@ -1,0 +1,15 @@
+apiVersion: v2
+name: bridgy
+description: A Helm chart for Cisco Bridgy AI Assistant
+type: application
+version: 0.1.0
+appVersion: "1.0.0"
+maintainers:
+  - name: Cisco AI Team
+keywords:
+  - cisco
+  - ai
+  - assistant
+  - bridgy
+  - intersight
+  - nexus
