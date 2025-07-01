@@ -101,6 +101,21 @@ echo ""
 echo "Applying all configuration files in osdeploy/..."
 oc apply -f "$(dirname "$0")/"
 
+# Clean up any failed builds
+echo "Cleaning up any previous failed builds..."
+oc delete builds -l openshift.io/build-config.name=bridgy-main --ignore-not-found=true
+oc delete builds -l openshift.io/build-config.name=bridgy-api --ignore-not-found=true
+oc delete pods -l openshift.io/build.name --ignore-not-found=true
+
+# Delete buildconfigs to ensure we're using the latest
+oc delete buildconfig bridgy-main --ignore-not-found=true
+oc delete buildconfig bridgy-api --ignore-not-found=true
+
+# Apply the updated buildconfigs
+echo "Applying updated buildconfigs..."
+oc apply -f "$(dirname "$0")/bridgy-main-buildconfig.yaml"
+oc apply -f "$(dirname "$0")/bridgy-api-buildconfig.yaml"
+
 # Start the builds
 echo ""
 echo "Starting builds for bridgy-main and bridgy-api..."
