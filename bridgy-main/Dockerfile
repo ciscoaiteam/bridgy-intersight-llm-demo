@@ -16,7 +16,7 @@ RUN apt-get update && \
     curl -fsSL https://developer.download.nvidia.com/compute/cuda/repos/ubuntu2204/x86_64/3bf863cc.pub | gpg --dearmor -o /etc/apt/keyrings/nvidia.gpg && \
     echo "deb [signed-by=/etc/apt/keyrings/nvidia.gpg] https://developer.download.nvidia.com/compute/cuda/repos/ubuntu2204/x86_64 /" > /etc/apt/sources.list.d/cuda.list && \
     apt-get update && \
-    apt-get install -y cuda-toolkit-12-5 && \
+    apt-get install -y cuda-toolkit-12-1 && \
     rm -rf /var/lib/apt/lists/*
 
 # Install Ollama
@@ -38,18 +38,34 @@ ENV OLLAMA_MODELS=/config/ollama
 # Set working directory
 WORKDIR /app
 
-# Copy project files
-COPY ./bridgy-main /app/bridgy-main
-COPY ./entrypoint.sh /app/entrypoint.sh
+# Copy project files from build context
+COPY . /app/bridgy-main
 
-# Set up Python venv and install packages with GPU support
+# Create entrypoint script - using multiple RUN commands to avoid syntax issues
+RUN echo '#!/bin/bash' > /app/entrypoint.sh
+RUN echo '# This file is generated during build' >> /app/entrypoint.sh
+RUN echo 'echo "[+] Starting Ollama..."' >> /app/entrypoint.sh
+RUN echo 'ollama serve &' >> /app/entrypoint.sh
+RUN echo '' >> /app/entrypoint.sh
+RUN echo 'sleep 5' >> /app/entrypoint.sh
+RUN echo '' >> /app/entrypoint.sh
+RUN echo 'echo "[+] Starting Bridgy..."' >> /app/entrypoint.sh
+RUN echo 'cd /app/bridgy-main' >> /app/entrypoint.sh
+RUN echo 'source /app/bridgy-main/venv/bin/activate' >> /app/entrypoint.sh
+RUN echo 'streamlit run main.py --server.port=8443 --server.address=0.0.0.0' >> /app/entrypoint.sh
+
+RUN chmod +x /app/entrypoint.sh
+
+# Copy requirements.txt only to install basic dependencies
+RUN grep -v torch /app/bridgy-main/requirements.txt > /app/basic_requirements.txt
+
+# Set up Python environment
 RUN python3.10 -m venv /app/bridgy-main/venv && \
     chmod -R +x /app/bridgy-main/venv/bin && \
     /app/bridgy-main/venv/bin/python -m pip install --upgrade pip && \
-    echo "Installing CUDA-enabled packages..." && \
-    rm -rf /usr/lib/x86_64-linux-gnu/libcudnn* /usr/local/cuda/lib64/libcudnn* && \
-    /app/bridgy-main/venv/bin/python -m pip install -r /app/bridgy-main/requirements.txt
-
-RUN chmod +x /app/entrypoint.sh
+    echo "Installing basic packages first..." && \
+    /app/bridgy-main/venv/bin/python -m pip install -r /app/basic_requirements.txt && \
+    echo "Installing PyTorch with CUDA..." && \
+    /app/bridgy-main/venv/bin/python -m pip install torch==2.2.1 --index-url https://download.pytorch.org/whl/cu121
 
 EXPOSE 8443

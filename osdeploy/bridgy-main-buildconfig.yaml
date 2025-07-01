@@ -16,7 +16,7 @@ spec:
   strategy:
     type: Docker
     dockerStrategy:
-      dockerfilePath: Dockerfile
+      # Use the default Dockerfile path
       from:
         kind: DockerImage
         name: ubuntu:22.04
