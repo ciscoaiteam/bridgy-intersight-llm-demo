@@ -116,14 +116,40 @@ echo "Applying updated buildconfigs..."
 oc apply -f "$(dirname "$0")/bridgy-main-buildconfig.yaml"
 oc apply -f "$(dirname "$0")/bridgy-api-buildconfig.yaml"
 
-# Start the builds
+# Start the binary builds
+echo ""
+echo "Preparing source directories for binary builds..."
+
+# Create temporary directory for builds
+BUILD_DIR=$(mktemp -d)
+echo "Using temporary directory: $BUILD_DIR"
+
+# Prepare bridgy-main build
+echo "Preparing bridgy-main build..."
+MAIN_DIR="$BUILD_DIR/bridgy-main-build"
+mkdir -p "$MAIN_DIR"
+cp -r "$(dirname "$0")/../bridgy-main" "$MAIN_DIR"
+cp "$(dirname "$0")/../bridgy-main/Dockerfile" "$MAIN_DIR/Dockerfile"
+
+# Prepare bridgy-api build
+echo "Preparing bridgy-api build..."
+API_DIR="$BUILD_DIR/bridgy-api-build"
+mkdir -p "$API_DIR"
+cp -r "$(dirname "$0")/../bridgy-api" "$API_DIR"
+cp "$(dirname "$0")/../bridgy-api/Dockerfile" "$API_DIR/Dockerfile"
+
+# Start the builds with binary source
 echo ""
 echo "Starting builds for bridgy-main and bridgy-api..."
 echo "Starting bridgy-main build..."
-oc start-build bridgy-main
+oc start-build bridgy-main --from-dir="$MAIN_DIR" --follow
 
 echo "Starting bridgy-api build..."
-oc start-build bridgy-api
+oc start-build bridgy-api --from-dir="$API_DIR" --follow
+
+# Clean up temp directory
+rm -rf "$BUILD_DIR"
+echo "Cleaned up temporary build directories."
 
 echo ""
 echo "Deployment initiated successfully!"

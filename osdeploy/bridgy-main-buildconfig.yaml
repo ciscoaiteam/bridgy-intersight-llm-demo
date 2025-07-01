@@ -11,18 +11,12 @@ spec:
     - type: ImageChange
       imageChange: {}
   source:
-    type: Git
-    git:
-      uri: https://github.com/ciscoaiteam/bridgy-intersight-llm-demo.git  # Replace with your actual Git repository URL
-      ref: main  # Replace with your branch name
-    contextDir: ""
+    type: Binary
+    binary: {}
   strategy:
     type: Docker
     dockerStrategy:
-      dockerfilePath: bridgy-main/Dockerfile
-      buildArgs:
-        - name: BUILDAH_LAYERS
-          value: "true"
+      dockerfilePath: Dockerfile
       env:
         - name: NEXUS_DASHBOARD_URL
           valueFrom:
