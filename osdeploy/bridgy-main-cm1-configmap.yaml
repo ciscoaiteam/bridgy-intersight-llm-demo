@@ -48,7 +48,8 @@ data:
     COPY ./bridgy-main /app/bridgy-main
     
     # Create entrypoint script
-    RUN echo $'#!/bin/bash
+    RUN cat > /app/entrypoint.sh << 'EOL'
+#!/bin/bash
 # This file is generated during build
 echo "[+] Starting Ollama..."
 ollama serve &
@@ -63,7 +64,8 @@ source /app/bridgy-main/venv/bin/activate
 
 echo "[+] Launching Streamlit app..."
 cd /app/bridgy-main
-streamlit run --server.fileWatcherType none main.py --server.port 8443' > /app/entrypoint.sh
+streamlit run --server.fileWatcherType none main.py --server.port 8443
+EOL
 
     # Set up Python venv and install packages with GPU support
     RUN python3.10 -m venv /app/bridgy-main/venv && \
