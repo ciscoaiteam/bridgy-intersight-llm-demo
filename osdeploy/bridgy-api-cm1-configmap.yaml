@@ -20,7 +20,7 @@ data:
         rm -rf /var/lib/apt/lists/*
 
     # Create requirements file directly
-    RUN echo 'fastapi
+    RUN echo $'fastapi
 uvicorn[standard]
 pydantic
 python-dotenv

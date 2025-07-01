@@ -48,7 +48,7 @@ data:
     COPY ./bridgy-main /app/bridgy-main
     
     # Create entrypoint script
-    RUN echo '#!/bin/bash
+    RUN echo $'#!/bin/bash
 # This file is generated during build
 echo "[+] Starting Ollama..."
 ollama serve &
