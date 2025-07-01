@@ -15,11 +15,14 @@ spec:
     git:
       uri: https://github.com/ciscoaiteam/bridgy-intersight-llm-demo.git  # Replace with your actual Git repository URL
       ref: main  # Replace with your branch name
-    contextDir: bridgy-api  # Directory containing the API code and Dockerfile
+    contextDir: ""  # Using empty string for root context
   strategy:
     type: Docker
     dockerStrategy:
-      dockerfilePath: Dockerfile  # Dockerfile is in the bridgy-api directory
+      dockerfilePath: bridgy-api/Dockerfile  # Full path from repo root
+      buildArgs:
+        - name: BUILDAH_LAYERS
+          value: "true"
       env:
         - name: PYTHONDONTWRITEBYTECODE
           value: "1"
