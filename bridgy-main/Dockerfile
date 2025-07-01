@@ -56,8 +56,9 @@ RUN echo 'streamlit run main.py --server.port=8443 --server.address=0.0.0.0' >> 
 
 RUN chmod +x /app/entrypoint.sh
 
-# Copy requirements.txt only to install basic dependencies
-RUN grep -v torch /app/bridgy-main/requirements.txt > /app/basic_requirements.txt
+# Create a basic requirements file without torch for separate installation
+COPY requirements.txt /app/requirements.txt
+RUN grep -v torch /app/requirements.txt > /app/basic_requirements.txt
 
 # Set up Python environment
 RUN python3.10 -m venv /app/bridgy-main/venv && \
