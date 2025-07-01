@@ -1,0 +1,51 @@
+apiVersion: apps.openshift.io/v1
+kind: DeploymentConfig
+metadata:
+  labels:
+    io.kompose.service: bridgy-main
+  name: bridgy-main
+spec:
+  replicas: 1
+  selector:
+    io.kompose.service: bridgy-main
+  strategy:
+    type: Recreate
+  template:
+    metadata:
+      labels:
+        io.kompose.service: bridgy-main
+    spec:
+      containers:
+        - env:
+            - name: NEXUS_DASHBOARD_PASSWORD
+            - name: NEXUS_DASHBOARD_URL
+            - name: NEXUS_DASHBOARD_USERNAME
+          image: ' '
+          name: bridgy-main
+          ports:
+            - containerPort: 8443
+              protocol: TCP
+          volumeMounts:
+            - mountPath: /config
+              name: bridgy-main-claim0
+            - mountPath: /app/bridgy-main
+              name: bridgy-main-cm1
+      restartPolicy: Always
+      volumes:
+        - name: bridgy-main-claim0
+          persistentVolumeClaim:
+            claimName: bridgy-main-claim0
+        - configMap:
+            name: bridgy-main-cm1
+          name: bridgy-main-cm1
+  test: false
+  triggers:
+    - type: ConfigChange
+    - imageChangeParams:
+        automatic: true
+        containerNames:
+          - bridgy-main
+        from:
+          kind: ImageStreamTag
+          name: bridgy-main:latest
+      type: ImageChange

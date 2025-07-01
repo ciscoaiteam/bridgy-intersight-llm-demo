@@ -1,0 +1,38 @@
+apiVersion: apps.openshift.io/v1
+kind: DeploymentConfig
+metadata:
+  labels:
+    io.kompose.service: bridgy-api
+  name: bridgy-api
+spec:
+  replicas: 1
+  selector:
+    io.kompose.service: bridgy-api
+  template:
+    metadata:
+      labels:
+        io.kompose.service: bridgy-api
+    spec:
+      containers:
+        - env:
+            - name: PYTHONDONTWRITEBYTECODE
+              value: "1"
+            - name: PYTHONUNBUFFERED
+              value: "1"
+          image: ' '
+          name: bridgy-api
+          ports:
+            - containerPort: 5000
+              protocol: TCP
+      restartPolicy: Always
+  test: false
+  triggers:
+    - type: ConfigChange
+    - imageChangeParams:
+        automatic: true
+        containerNames:
+          - bridgy-api
+        from:
+          kind: ImageStreamTag
+          name: bridgy-api:latest
+      type: ImageChange
