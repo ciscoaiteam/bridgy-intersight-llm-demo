@@ -29,8 +29,11 @@ httpx' > /app/requirements.txt
     # Install dependencies
     RUN pip install --no-cache-dir -r /app/requirements.txt
 
-    # Copy application code
-    COPY ./bridgy-api /app/bridgy-api
+    # Create directory for application code
+    RUN mkdir -p /app/bridgy-api
+    
+    # Note: In OpenShift binary builds, you'll need to provide the source code 
+    # for bridgy-api when starting the build with 'oc start-build bridgy-api --from-dir=./bridgy-api'
 
     # Create a non-root user for security
     RUN adduser --disabled-password --gecos "" appuser && \
