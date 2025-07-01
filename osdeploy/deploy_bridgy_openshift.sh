@@ -168,8 +168,8 @@ echo "Current pods:"
 oc get pods
 
 echo ""
-echo "Routes (access URLs when deployed):"
-oc get routes
+echo "Services:"
+oc get services | grep bridgy
 
 echo ""
 echo "Deployment process has been started. The application will be available"
