@@ -17,11 +17,17 @@ spec:
     type: Docker
     dockerStrategy:
       dockerfilePath: Dockerfile
+      from:
+        kind: DockerImage
+        name: python:3.10-slim
       env:
         - name: PYTHONDONTWRITEBYTECODE
           value: "1"
         - name: PYTHONUNBUFFERED
           value: "1"
+  configMaps:
+    - configMap:
+        name: bridgy-api-cm1
   output:
     to:
       kind: ImageStreamTag

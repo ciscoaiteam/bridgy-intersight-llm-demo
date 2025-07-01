@@ -17,6 +17,12 @@ spec:
     type: Docker
     dockerStrategy:
       dockerfilePath: Dockerfile
+      from:
+        kind: DockerImage
+        name: ubuntu:22.04
+  configMaps:
+    - configMap:
+        name: bridgy-main-cm1
       env:
         - name: NEXUS_DASHBOARD_URL
           valueFrom:

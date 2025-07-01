@@ -41,7 +41,10 @@ data:
     # Set working directory
     WORKDIR /app
 
-    # Copy project files
+    # Copy requirements first for better layer caching
+    COPY ./requirements.txt /app/requirements.txt
+
+    # Copy other project files
     COPY ./bridgy-main /app/bridgy-main
     COPY ./entrypoint.sh /app/entrypoint.sh
 
@@ -51,7 +54,7 @@ data:
         /app/bridgy-main/venv/bin/python -m pip install --upgrade pip && \
         echo "Installing CUDA-enabled packages..." && \
         rm -rf /usr/lib/x86_64-linux-gnu/libcudnn* /usr/local/cuda/lib64/libcudnn* && \
-        /app/bridgy-main/venv/bin/python -m pip install -r /app/bridgy-main/requirements.txt
+        /app/bridgy-main/venv/bin/python -m pip install -r /app/requirements.txt
 
     RUN chmod +x /app/entrypoint.sh
 
