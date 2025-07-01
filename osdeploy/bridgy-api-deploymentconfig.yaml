@@ -19,6 +19,18 @@ spec:
               value: "1"
             - name: PYTHONUNBUFFERED
               value: "1"
+            
+            # LLM Configuration
+            - name: LLM_BASE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: bridgy-secrets
+                  key: llm-base-url
+            - name: LLM_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: bridgy-secrets
+                  key: llm-api-key
           image: ' '
           name: bridgy-api
           ports:

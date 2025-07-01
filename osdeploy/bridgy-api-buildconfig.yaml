@@ -1,0 +1,39 @@
+apiVersion: build.openshift.io/v1
+kind: BuildConfig
+metadata:
+  name: bridgy-api
+  labels:
+    app: bridgy-api
+    io.kompose.service: bridgy-api
+spec:
+  triggers:
+    - type: ConfigChange
+    - type: ImageChange
+      imageChange: {}
+  source:
+    type: Git
+    git:
+      uri: https://github.com/ciscoaiteam/bridgy-intersight-llm-demo.git  # Replace with your actual Git repository URL
+      ref: main  # Replace with your branch name
+    contextDir: bridgy-api  # Directory containing the API code and Dockerfile
+  strategy:
+    type: Docker
+    dockerStrategy:
+      dockerfilePath: Dockerfile  # Dockerfile is in the bridgy-api directory
+      env:
+        - name: PYTHONDONTWRITEBYTECODE
+          value: "1"
+        - name: PYTHONUNBUFFERED
+          value: "1"
+  output:
+    to:
+      kind: ImageStreamTag
+      name: bridgy-api:latest
+  resources:
+    limits:
+      memory: 1Gi
+      cpu: 1
+    requests:
+      memory: 512Mi
+      cpu: 500m
+  completionDeadlineSeconds: 900  # 15 minutes build timeout

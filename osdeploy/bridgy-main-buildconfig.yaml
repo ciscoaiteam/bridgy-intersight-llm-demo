@@ -1,0 +1,56 @@
+apiVersion: build.openshift.io/v1
+kind: BuildConfig
+metadata:
+  name: bridgy-main
+  labels:
+    app: bridgy-main
+    io.kompose.service: bridgy-main
+spec:
+  triggers:
+    - type: ConfigChange
+    - type: ImageChange
+      imageChange: {}
+  source:
+    type: Git
+    git:
+      uri: https://github.com/ciscoaiteam/bridgy-intersight-llm-demo.git  # Replace with your actual Git repository URL
+      ref: main  # Replace with your branch name
+    contextDir: ""
+  strategy:
+    type: Docker
+    dockerStrategy:
+      dockerfilePath: bridgy-main/Dockerfile
+      buildArgs:
+        - name: BUILDAH_LAYERS
+          value: "true"
+      env:
+        - name: NEXUS_DASHBOARD_URL
+          valueFrom:
+            secretKeyRef:
+              name: bridgy-secrets
+              key: nexus-dashboard-url
+              optional: true
+        - name: NEXUS_DASHBOARD_USERNAME
+          valueFrom:
+            secretKeyRef:
+              name: bridgy-secrets
+              key: nexus-dashboard-username
+              optional: true
+        - name: NEXUS_DASHBOARD_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: bridgy-secrets
+              key: nexus-dashboard-password
+              optional: true
+  output:
+    to:
+      kind: ImageStreamTag
+      name: bridgy-main:latest
+  resources:
+    limits:
+      memory: 4Gi
+      cpu: 2
+    requests:
+      memory: 2Gi
+      cpu: 1
+  completionDeadlineSeconds: 1800  # 30 minutes build timeout

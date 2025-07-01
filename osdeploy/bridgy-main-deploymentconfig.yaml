@@ -17,9 +17,84 @@ spec:
     spec:
       containers:
         - env:
-            - name: NEXUS_DASHBOARD_PASSWORD
+            # Nexus Dashboard credentials
             - name: NEXUS_DASHBOARD_URL
+              valueFrom:
+                secretKeyRef:
+                  name: bridgy-secrets
+                  key: nexus-dashboard-url
             - name: NEXUS_DASHBOARD_USERNAME
+              valueFrom:
+                secretKeyRef:
+                  name: bridgy-secrets
+                  key: nexus-dashboard-username
+            - name: NEXUS_DASHBOARD_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: bridgy-secrets
+                  key: nexus-dashboard-password
+            - name: NEXUS_DASHBOARD_DOMAIN
+              valueFrom:
+                secretKeyRef:
+                  name: bridgy-secrets
+                  key: nexus-dashboard-domain
+            
+            # Intersight API credentials
+            - name: INTERSIGHT_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: bridgy-secrets
+                  key: intersight-api-key
+            - name: INTERSIGHT_SECRET_KEY_PATH
+              value: "/etc/intersight/intersight.pem"
+            
+            # LLM Configuration
+            - name: OLLAMA_API_URL
+              valueFrom:
+                secretKeyRef:
+                  name: bridgy-secrets
+                  key: ollama-api-url
+            - name: DEFAULT_MODEL
+              valueFrom:
+                secretKeyRef:
+                  name: bridgy-secrets
+                  key: default-model
+            
+            # Remote LLM Service
+            - name: LLM_BASE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: bridgy-secrets
+                  key: llm-base-url
+            - name: LLM_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: bridgy-secrets
+                  key: llm-api-key
+            - name: LLM_MODEL_PATH
+              valueFrom:
+                secretKeyRef:
+                  name: bridgy-secrets
+                  key: llm-model-path
+            
+            # LangSmith Configuration
+            - name: LANGSMITH_ENDPOINT
+              valueFrom:
+                secretKeyRef:
+                  name: bridgy-secrets
+                  key: langsmith-endpoint
+            - name: LANGSMITH_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: bridgy-secrets
+                  key: langsmith-api-key
+            - name: LANGSMITH_PROJECT
+              valueFrom:
+                secretKeyRef:
+                  name: bridgy-secrets
+                  key: langsmith-project
+            - name: LANGSMITH_TRACING
+              value: "true"
           image: ' '
           name: bridgy-main
           ports:
@@ -30,6 +105,9 @@ spec:
               name: bridgy-main-claim0
             - mountPath: /app/bridgy-main
               name: bridgy-main-cm1
+            - mountPath: /etc/intersight
+              name: intersight-secret
+              readOnly: true
       restartPolicy: Always
       volumes:
         - name: bridgy-main-claim0
@@ -38,6 +116,12 @@ spec:
         - configMap:
             name: bridgy-main-cm1
           name: bridgy-main-cm1
+        - name: intersight-secret
+          secret:
+            secretName: bridgy-secrets
+            items:
+            - key: intersight-secret-key
+              path: intersight.pem
   test: false
   triggers:
     - type: ConfigChange
