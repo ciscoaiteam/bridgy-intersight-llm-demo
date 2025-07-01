@@ -2,12 +2,9 @@
 
 ![Cisco Bridgy Logo](/image.png)
  
-[![Docker Build](https://img.shields.io/badge/docker-build-green?style=flat-square&logo=docker)](https://hub.docker.com/r/amac00/bridgy-ai)
+[![OpenShift](https://img.shields.io/badge/openshift-deployment-red?style=flat-square&logo=redhat)](https://www.openshift.com/)
 [![Python Version](https://img.shields.io/badge/python-3.10-blue.svg)](https://www.python.org/downloads/)
 [![License](https://img.shields.io/badge/License-TBD-yellow.svg)](#license)
-
-
-## API BRANCH
 
 ## Overview
 
@@ -39,109 +36,56 @@ Cisco Bridgy is an advanced AI assistant designed to provide specialized experti
 
 ## System Requirements
 
-### Hardware
-- **GPU**: Nvidia GPU with minimum 18 GB VRAM
+### Deployment Environment
+- **OpenShift Container Platform**: Version 4.x or higher
+- **GPU-enabled Node**: Nvidia GPU with minimum 18 GB VRAM
+
+### Hardware Requirements
+- **GPU**: Nvidia GPU with CUDA support
 - **CUDA**: Version 12.x
 - **cuDNN**: Version 9+
 
 ### Software Prerequisites
-- Python 3.10 or higher
-- Internet Connectivity
-- Intersight API Key & PEM
+- Intersight API Key & PEM file (for Intersight integration)
 - Nexus Dashboard credentials (for Nexus Dashboard functionality)
 - LangSmith Key (Optional, for troubleshooting)
 
-## Installation Methods
+## OpenShift Deployment
 
-### Quick DCloud Installation
+The Bridgy AI Assistant is designed to be deployed exclusively on OpenShift, leveraging GPU resources for optimal performance.
 
-For the fastest setup, especially in Cisco DCloud environments, use the `docker_run.sh` script. This method provides a pre-configured, ready-to-deploy solution with minimal configuration required.
+### Deployment Overview
 
-### 1. Prebuilt Container Installation (Recommended)
+1. **OpenShift Deployment Resources**:
+   - All necessary deployment configurations are in the `osdeploy/` directory
+   - ConfigMaps contain embedded Dockerfiles and configuration files
+   - Deployment configurations are set to use GPU resources
 
-- Download the docker_run.sh file from the root of the repo. 
-```bash
-# Run the AI.sh that is deployed to get all the docker / CUDA / Python stuff installed first (For dCloud Installs only)
-./ai.sh
+2. **Environment Configuration**:
+   - Environment variables and credentials are managed through OpenShift Secrets
+   - PEM files for Intersight API are mounted as volumes
 
-# Clone the Directory ( You could do just the docker_run.sh file but maybe you want to see what else is in this ) 
-git clone https://github.com/ciscoaiteam/bridgy-intersight-llm-demo.git
-
-# Input your PAT GIT key, While the repo is public the container is still private. **Org Policy
-echo ghp_### | docker login ghcr.io -u <username> --password-stdin
-
-# Make the script executable
-chmod +x docker_run.sh
-
-# Run the installation script
-./docker_run.sh
-```
-Notes: Update the new .env and PEM files in the config folder. These will be mounted and used by the container.
-
-### 2. Build Your Own Container
-
-For custom configurations or latest source code:
+### Deployment Steps
 
 ```bash
-# Run the AI.sh that is deployed to get all the docker / CUDA / Python stuff installed first (For dCloud Installs only)
-./ai.sh
+# Login to OpenShift cluster
+oc login --token=<your-token> --server=<your-openshift-server>
 
-# Clone the repository
-git clone https://github.com/ciscoaiteam/bridgy-intersight-llm-demo.git
+# Create a new project (or use an existing one)
+oc new-project bridgy-ai
 
-# Run local_build_install.sh
-./local_build_install.sh
+# Apply the deployment configurations
+oc apply -f osdeploy/
 
-# Populate the local .env file with your credentials
-# (Create .env file as described in Configuration section)
+# Create necessary secrets
+oc create secret generic bridgy-env --from-file=.env=./.env
+oc create secret generic intersight-key --from-file=intersight.pem=./intersight.pem
+
+# Verify deployment status
+oc get pods
 ```
 
-### 3. Local Installation (Without Container)
-
-For development or environments without Docker:
-
-#### Prerequisites
-- Python 3.10 or higher
-- Nvidia GPU with 18GB+ VRAM
-- CUDA 12.x
-- cuDNN 9+
-- Python 3.10
-
-#### Installation Steps
-
-```bash
-# Update system packages
-sudo apt-get update
-sudo apt-get install -y python3-pip python3-dev build-essential libssl-dev zlib1g-dev libjpeg-dev libtiff-dev
-
-# Clone the repository
-git clone https://github.com/ciscoaiteam/bridgy-intersight-llm-demo.git
-cd bridgy-intersight-llm-demo
-
-# Create and activate a virtual environment (recommended)
-python3 -m venv venv
-source venv/bin/activate
-
-# Install Python dependencies
-pip install -r requirements.txt
-# Or install individual dependencies
-pip install faiss-cpu langchain-community langchain python-dotenv streamlit tiktoken intersight trafilatura langchain-openai pillow pypdf
-
-# Set up environment variables
-cp .env.example .env
-# Edit .env file with your specific configurations
-
-# You will also need to update the Intersight PEM file
-
-# Run the application
-streamlit run --server.fileWatcherType none main.py --server.port 8443
-```
-
-### Post-Installation Access
-
-After successful installation via any method, access the application at:
-- `http://localhost:8443` (local access)
-- `http://your_server_ip:8443` (network access)
+The application is designed to be accessed internally within the OpenShift cluster by other services and does not expose external routes.
 
 ## Configuration
 
@@ -174,59 +118,88 @@ You can generate these credentials from your Intersight account under Settings >
 
 ## Usage
 
-1. After starting the application, you'll see the Cisco Bridgy AI Assistant interface.
-2. Type your question in the chat input at the bottom of the screen.
-3. The assistant will automatically route your question to the appropriate expert and display the response.
-4. Questions about your Intersight environment, Nexus Dashboard, AI Pods, or general Cisco knowledge are all supported.
+The Bridgy AI Assistant is designed to be used as an API service within an OpenShift environment:
+
+1. **API Integration**: Access the service via API calls to the internal service endpoint
+2. **Routing**: The service automatically routes queries to the appropriate expert system
+3. **Authentication**: All API calls should include appropriate authentication headers
+4. **Response Handling**: The service provides JSON responses that can be integrated with frontend applications
 
 ## Verification
 
-Verify your installation by checking:
-1. Successful dependency installations
-2. Proper API key configurations
+Verify your OpenShift deployment by checking:
 
 ```bash
-# Verify Python installation
-python3 -c "import langchain; print('LangChain installed successfully')"
+# Check pod status
+oc get pods -l app=bridgy-ai
+
+# View pod logs
+oc logs $(oc get pods -l app=bridgy-ai -o name | head -n 1)
+
+# Check if the service is running
+oc get services -l app=bridgy-ai
+
+# Verify ConfigMaps are correctly applied
+oc get configmaps
+
+# Check if secrets are properly created
+oc get secrets | grep bridgy
 ```
+
+Ensure all pods are in the "Running" state and the logs show successful initialization with no errors.
 
 ## Troubleshooting
 
-### Common Issues
-- **Nexus Dashboard Connection Issues**:
-  - Verify the URL format (should include https://)
-  - Check username/password credentials
-  - SSL verification may need to be disabled for self-signed certificates
-  - Verify credentials in .env file
-  - Check network connectivity to Nexus Dashboard instance
-  - Confirm SSL certificate settings
-- **Intersight API Errors**:
-  - Verify API key and PEM file
-  - Check permissions for the API key
-- **Port access issues**: 
-  - If you can't access the application from another machine, check your firewall settings to ensure port 8443 is open
-- **API Connection Errors**: 
-  - Check your API keys and credentials in the .env file
-  - Ensure network connectivity to the remote LLM service
-- Ensure all dependencies are correctly installed
+### Common OpenShift Deployment Issues
+
+- **Pod Failures**:
+  - Check pod logs: `oc logs <pod-name>`
+  - Verify resource limits are appropriate for GPU usage
+  - Ensure OpenShift has NVIDIA GPU operators installed on target nodes
+
+- **Secret Configuration Issues**:
+  - Verify secrets are correctly created: `oc describe secret <secret-name>`
+  - Check secret mounting in pod configuration
+  - Ensure .env file contains all required environment variables
+
+- **Network Connectivity Issues**:
+  - Verify OpenShift internal network policies allow service communication
+  - Check service definitions: `oc get svc`
+  - Test connectivity between pods: `oc exec <pod-name> -- curl -v <service-name>:<port>`
+
+- **API Credential Issues**:
+  - **Nexus Dashboard**: Check secret contains valid credentials and correct URL format (https://)
+  - **Intersight API**: Verify API key in secrets and ensure PEM file is correctly mounted
+  - **LangSmith**: Confirm API key is valid if tracing is enabled
+
+- **GPU Resources**:
+  - Verify GPU availability in cluster: `oc get nodes -o json | jq '.items[] | {name:.metadata.name, gpu:.status.capacity."nvidia.com/gpu"}'`
+  - Check GPU usage in pods: `oc exec <pod-name> -- nvidia-smi`
+  - Ensure pods are scheduled on GPU-enabled nodes
 
 ## Project Structure
 
 ```
-├── .streamlit/                # Streamlit configuration
-├── experts/                   # Expert modules
-│   ├── ai_pods_expert.py      # AI Pods expert implementation
-│   ├── general_expert.py      # General Cisco knowledge expert
-│   ├── intersight_expert.py   # Intersight expert implementation
-│   ├── nexus_dashboard_expert.py # Nexus Dashboard expert implementation
-│   └── router.py              # Expert routing logic
-├── pdf/                       # Documentation PDFs
-├── tools/                     # Utility tools
-│   ├── intersight_api.py      # Intersight API interface
-│   ├── nexus_dashboard_api.py # Nexus Dashboard API interface
-│   └── pdf_loader.py          # PDF document loader
-├── config.py                  # Application configuration
-└── main.py                    # Main application entry point
+├── bridgy-main/                # Main application code
+│   ├── experts/                # Expert modules
+│   │   ├── ai_pods_expert.py    # AI Pods expert implementation
+│   │   ├── general_expert.py    # General Cisco knowledge expert
+│   │   ├── intersight_expert.py # Intersight expert implementation
+│   │   ├── nexus_dashboard_expert.py # Nexus Dashboard expert implementation
+│   │   └── router.py            # Expert routing logic
+│   ├── pdf/                    # Documentation PDFs
+│   ├── tools/                  # Utility tools
+│   │   ├── intersight_api.py    # Intersight API interface
+│   │   ├── nexus_dashboard_api.py # Nexus Dashboard API interface
+│   │   └── pdf_loader.py        # PDF document loader
+│   ├── config.py               # Application configuration
+│   ├── Dockerfile              # Container definition for application
+│   ├── requirements.txt        # Consolidated Python dependencies with GPU support
+│   └── main.py                 # Main application entry point
+├── osdeploy/                   # OpenShift deployment configurations
+│   ├── bridgy-main-cm1-configmap.yaml # Main ConfigMap with embedded Dockerfile
+│   └── [other deployment yamls]  # Other OpenShift resources
+└── entrypoint.sh               # Container entry point script
 ```
 
 ## Nexus Dashboard Integration
@@ -301,21 +274,18 @@ If the Nexus Dashboard API is unavailable, the system will automatically fall ba
 | NEXUS_DASHBOARD_PASSWORD | Password for Nexus Dashboard | Yes (for Nexus Dashboard) |
 | NEXUS_DASHBOARD_DOMAIN | Domain for Nexus Dashboard (default: local) | No |
 
-=======
-├── bridgy-main/            
-│   ├── experts/               # Expert modules
-│   │   ├── router.py          # Query routing logic
-│   │   ├── intersight_expert.py
-│   │   ├── ai_pods_expert.py
-│   │   └── general_expert.py
-│   ├── tools/                 # Utility tools
-│   │   ├── intersight_api.py  # Intersight API integration
-│   │   └── pdf_loader.py      # PDF document loading
-│   ├── utils/                 # Utility functions
-│   └── main.py                # Main application entry point
-├── config/                    # Configuration files
-└── docker_run.sh              # Docker deployment script
-```
+## GPU Support
+
+The application has been optimized for GPU usage with NVIDIA CUDA. Key features include:
+
+- Consolidated GPU requirements in a single requirements.txt file
+- NVIDIA CUDA 12.x and cuDNN 9+ library support
+- GPU-accelerated PyTorch (torch==2.2.1+cu121) 
+- GPU-optimized FAISS vector database (faiss-gpu)
+- OpenShift deployment configured for NVIDIA GPU resource requests
+
+The application automatically assumes GPU availability, which simplifies deployment and improves performance for GPU-intensive tasks like LLM inference and vector search operations.
+
 ## Contributors
 
 - [@amac00](https://github.com/amac00)
