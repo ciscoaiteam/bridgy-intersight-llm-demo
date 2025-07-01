@@ -1,6 +1,11 @@
 apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: bridgy-main-cm1
+  labels:
+    io.kompose.service: bridgy-main
 data:
-  Dockerfile: |
+  Dockerfile: |-
     FROM ubuntu:22.04
 
     ENV DEBIAN_FRONTEND=noninteractive
@@ -47,25 +52,23 @@ data:
     # Copy other project files
     COPY ./bridgy-main /app/bridgy-main
     
-    # Create entrypoint script
-    RUN cat > /app/entrypoint.sh << 'EOL'
-#!/bin/bash
-# This file is generated during build
-echo "[+] Starting Ollama..."
-ollama serve &
-
-sleep 5
-
-echo "[+] Pulling models..."
-ollama pull gemma2
-
-echo "[+] Activating virtual environment..."
-source /app/bridgy-main/venv/bin/activate
-
-echo "[+] Launching Streamlit app..."
-cd /app/bridgy-main
-streamlit run --server.fileWatcherType none main.py --server.port 8443
-EOL
+    # Create entrypoint script - using multiple RUN commands to avoid YAML issues
+    RUN echo '#!/bin/bash' > /app/entrypoint.sh
+    RUN echo '# This file is generated during build' >> /app/entrypoint.sh
+    RUN echo 'echo "[+] Starting Ollama..."' >> /app/entrypoint.sh
+    RUN echo 'ollama serve &' >> /app/entrypoint.sh
+    RUN echo '' >> /app/entrypoint.sh
+    RUN echo 'sleep 5' >> /app/entrypoint.sh
+    RUN echo '' >> /app/entrypoint.sh
+    RUN echo 'echo "[+] Pulling models..."' >> /app/entrypoint.sh
+    RUN echo 'ollama pull gemma2' >> /app/entrypoint.sh
+    RUN echo '' >> /app/entrypoint.sh
+    RUN echo 'echo "[+] Activating virtual environment..."' >> /app/entrypoint.sh
+    RUN echo 'source /app/bridgy-main/venv/bin/activate' >> /app/entrypoint.sh
+    RUN echo '' >> /app/entrypoint.sh
+    RUN echo 'echo "[+] Launching Streamlit app..."' >> /app/entrypoint.sh
+    RUN echo 'cd /app/bridgy-main' >> /app/entrypoint.sh
+    RUN echo 'streamlit run --server.fileWatcherType none main.py --server.port 8443' >> /app/entrypoint.sh
 
     # Set up Python venv and install packages with GPU support
     RUN python3.10 -m venv /app/bridgy-main/venv && \
@@ -78,124 +81,213 @@ EOL
     RUN chmod +x /app/entrypoint.sh
 
     EXPOSE 8443
-  config.py: "import os\nfrom dotenv import load_dotenv\n\n# Use a single location for .env file - project root\nENV_FILE_PATH = \"/.env\"  # Absolute path from project root\n\ndef load_environment():\n    \"\"\"Load environment variables from the .env file in project root\"\"\"\n    # Get the absolute path to the project root\n    project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))\n    \n    # Full path to the .env file\n    env_path = os.path.join(project_root, \".env\")\n    \n    # Load from the .env file\n    if os.path.exists(env_path):\n        try:\n            load_dotenv(dotenv_path=env_path)\n            print(f\"[INFO] Successfully loaded .env from {env_path}\")\n            return True, env_path\n        except Exception as e:\n            print(f\"[WARNING] Failed to load .env: {str(e)}\")\n    else:\n        print(f\"⚠️  No .env file found at {env_path}\")\n        print(f\"Please copy .env_example to {env_path}\")\n    \n    return False, None\n\n# Load environment variables at module import time\nloaded, env_path = load_environment()\n\n# LangSmith configuration\nLANGSMITH_TRACING = os.getenv(\"LANGSMITH_TRACING\", \"true\")\nLANGSMITH_ENDPOINT = os.getenv(\"LANGSMITH_ENDPOINT\", \"https://api.smith.langchain.com\")\nLANGSMITH_API_KEY = os.getenv(\"LANGSMITH_API_KEY\")\nLANGSMITH_PROJECT = os.getenv(\"LANGSMITH_PROJECT\", \"bridgy\")\n\n# Intersight config\nLANGSMITH_PROJECT = os.getenv(\"LANGSMITH_PROJECT\", \"bridgy\")\n\n\ndef setup_langsmith():\n    LANGSMITH_API_KEY = os.getenv(\"LANGSMITH_API_KEY\")\n    if LANGSMITH_API_KEY:\n        \"\"\"Configure LangSmith environment variables\"\"\"\n        os.environ[\"LANGCHAIN_TRACING_V2\"] = \"true\"\n        os.environ[\"LANGCHAIN_ENDPOINT\"] = LANGSMITH_ENDPOINT\n        os.environ[\"LANGCHAIN_API_KEY\"] = LANGSMITH_API_KEY\n        os.environ[\"LANGCHAIN_PROJECT\"] = LANGSMITH_PROJECT\n    else:\n        # Optionally log a warning or set a dummy value\n        os.environ[\"LANGCHAIN_API_KEY\"] = \"\"\n        print(\"Warning: LANGSMITH_API_KEY is not set. LangSmith features will be disabled.\")\n        os.environ[\"LANGCHAIN_ENDPOINT\"] = \"\"\n        os.environ[\"LANGCHAIN_PROJECT\"] = \"\""
+  config.py: |-
+    import os
+    from dotenv import load_dotenv
 
-  main.py: "from fastapi import FastAPI, HTTPException, Request, Header, Depends\nfrom fastapi.middleware.cors import CORSMiddleware\nfrom fastapi.responses import FileResponse\nfrom fastapi.staticfiles import StaticFiles\nfrom pydantic import BaseModel, Field, field_serializer, ConfigDict\nfrom typing import Dict, List, Optional, Tuple, Any, Annotated\nimport uuid\nimport os\nimport logging\nfrom logging.handlers import TimedRotatingFileHandler\nfrom datetime import datetime\nimport time\nimport random\nfrom dotenv import load_dotenv\nfrom experts.router import ExpertRouter\nimport ssl\nimport motor.motor_asyncio\nfrom bson import ObjectId\nimport asyncio\nimport re\n\n\n# Test \n\ndef setup_logging():\n    \"\"\"Configure logging with daily log rotation.\"\"\"\n    # Create logs directory if it doesn't exist\n    os.makedirs(\"logs\", exist_ok=True)\n\n    # Log format\n    log_format = \"%(asctime)s - %(name)s - %(levelname)s - %(message)s\"\n\n    # Configure the root logger\n    root_logger = logging.getLogger()  # Root logger\n    root_logger.setLevel(logging.DEBUG)\n\n    # Clear any existing handlers to avoid duplicates\n    root_logger.handlers.clear()\n\n    # Create handlers\n    stream_handler = logging.StreamHandler()  # For console output\n\n    # Use TimedRotatingFileHandler for daily log rotation\n    file_handler = TimedRotatingFileHandler(\n        \"logs/bridgy_api.log\",\n        when=\"midnight\",  # Rotate at midnight\n        interval=1,       # Interval of 1 day\n        backupCount=7,    # Keep 7 backup log files\n        encoding=\"utf-8\"\n    )\n\n    error_handler = TimedRotatingFileHandler(\n        \"logs/bridgy_api_errors.log\",\n        when=\"midnight\",  # Rotate at midnight\n        interval=1,       # Interval of 1 day\n        backupCount=7,    # Keep 7 backup log files\n        encoding=\"utf-8\"\n    )\n\n    # Customize the rotated filenames to include the date\n    file_handler.suffix = \"%Y-%m-%d\"\n    error_handler.suffix = \"%Y-%m-%d\"\n\n    # Set log levels\n    stream_handler.setLevel(logging.DEBUG)  # All logs to the console\n    file_handler.setLevel(logging.INFO)     # General logs\n    error_handler.setLevel(logging.ERROR)   # Errors only\n\n    # Create a formatter and attach it to the handlers\n    formatter = logging.Formatter(log_format)\n    stream_handler.setFormatter(formatter)\n    file_handler.setFormatter(formatter)\n    error_handler.setFormatter(formatter)\n\n    # Add handlers to the root logger\n    root_logger.addHandler(stream_handler)\n    root_logger.addHandler(file_handler)\n    root_logger.addHandler(error_handler)\n\n    # Ensure all child loggers propagate to the root logger\n    # This makes sure module-specific loggers inherit the root logger's configuration\n    logging.getLogger(\"experts\").setLevel(logging.DEBUG)\n    logging.getLogger(\"experts\").propagate = True\n\n    return root_logger\n\n# Initialize logging\nlogger = setup_logging()\nlogger.info(\"Starting Cisco Bridgy AI Assistant API server...\")\n\n# Add this after setup_logging() in main.py\nlogger.info(\"Main logger test\")\nlogging.getLogger(\"experts.router\").error(\"Test from experts.router logger\")\n\n# Load environment variables\nload_dotenv()\nlogger.debug(\"Environment variables loaded\")\n\n# MongoDB Configuration\nMONGODB_URL = os.getenv(\"MONGODB_URL\", \"mongodb://localhost:27017\")\nDB_NAME = os.getenv(\"MONGODB_DB\", \"bridgy_db\")\nTHREADS_COLLECTION = \"threads\"\nMESSAGES_COLLECTION = \"messages\"\n\n# Initialize MongoDB client\nclient = motor.motor_asyncio.AsyncIOMotorClient(MONGODB_URL)\ndb = client[DB_NAME]\n\n# Create FastAPI app\napp = FastAPI(title=\"Cisco Bridgy AI Assistant API\", version=\"1.0.0\")\n\n# Log startup\nlogger.debug(\"Debug logging enabled\")\n\n# CORS middleware for React frontend\napp.add_middleware(\n    CORSMiddleware,\n    allow_origins=[\"*\"],  # Allow all origins during development\n    allow_credentials=True,\n    allow_methods=[\"*\"],\n    allow_headers=[\"*\"],\n)\n\nlogger.info(\"CORS middleware configured\")\n\n# Initialize the expert router (with singleton pattern)\n_expert_router = None\n\ndef get_expert_router():\n    global _expert_router\n    if _expert_router is None:\n        from experts.router import ExpertRouter\n        _expert_router = ExpertRouter()\n    return _expert_router\n\n# Pydantic models compatible with Pydantic V2\nclass ThreadCreate(BaseModel):\n    threadName: str = Field(..., min_length=1)\n\nclass ThreadResponse(BaseModel):\n    threadId: str\n\nclass MessageCreate(BaseModel):\n    threadId: str\n    message: str\n    autoInvokedCommand: bool = False\n\nclass MessageResponse(BaseModel):\n    content: str\n    url: str\n    timestamp: int\n    id: str\n    followUps: List[str]\n    expert: str\n\nclass ThreadModel(BaseModel):\n    model_config = ConfigDict(populate_by_name=True, arbitrary_types_allowed=True)\n    \n    id: Optional[ObjectId] = Field(default=None, alias=\"_id\")\n    threadId: str\n    threadName: str\n    createdAt: str\n    \n    @field_serializer('id')\n    def serialize_id(self, id: Optional[ObjectId]) -> Optional[str]:\n        return str(id) if id else None\n\nclass MessageModel(BaseModel):\n    model_config = ConfigDict(populate_by_name=True, arbitrary_types_allowed=True)\n    \n    id: Optional[ObjectId] = Field(default=None, alias=\"_id\")\n    messageId: str\n    threadId: str\n    userMessage: str\n    assistantMessage: str\n    expert: str\n    timestamp: str\n    autoInvokedCommand: bool = False\n    \n    @field_serializer('id')\n    def serialize_id(self, id: Optional[ObjectId]) -> Optional[str]:\n        return str(id) if id else None\n\n# Helper functions\ndef generate_id() -> str:\n    return str(uuid.uuid4())\n\ndef get_timestamp() -> str:\n    return int(time.time() * 1000)\n\ndef get_unix_timestamp() -> int:\n    return int(time.time() * 1000)\n\nasync def generate_follow_ups(original_message: str, response: str, expert: str) -> List[str]:\n    \"\"\"Generate follow-up questions based on the conversation using the ExpertRouter\"\"\"\n    try:\n        # Create a prompt for generating follow-up questions\n        follow_up_prompt = f\"\"\"\n            Based on the following conversation, generate 2 specific follow-up questions that would be helpful for the user to ask next.\n            Make the questions concise, specific, and directly related to the conversation content.\n\n            User question: {original_message}\n\n            Assistant response (by {expert}): {response}\n\n            Generate exactly 2 follow-up questions:\n            \"\"\"\n        \n        # Use the ExpertRouter to generate follow-up questions\n        router = get_expert_router()\n        follow_up_response, _ = router.route_and_respond(follow_up_prompt)\n        \n        # Parse the response to extract the follow-up questions\n        potential_questions = [\n            line.strip() for line in follow_up_response.split('\\n') \n            if line.strip() and ('?' in line or line.strip().startswith('1.') or line.strip().startswith('2.'))\n        ]\n        \n        # Clean up the questions (remove numbers, etc.)\n        cleaned_questions = []\n        for q in potential_questions:\n            # Remove leading numbers and symbols\n            cleaned_q = q.strip()\n            if cleaned_q.startswith(('1.', '2.', '3.', '-', '*', '•')):\n                cleaned_q = cleaned_q[2:].strip()\n            cleaned_questions.append(cleaned_q)\n        \n        # Ensure we have at least 2 questions\n        if len(cleaned_questions) >= 2:\n            return cleaned_questions[:2]  # Return exactly 2 questions\n        \n        logger.warning(f\"LLM didn't generate enough follow-up questions, adding fallback options\")\n        \n        # If we don't have enough, add some generic ones\n        generic_fallbacks = [\n            \"Can you explain that in more detail?\",\n            \"What are the implications of this?\",\n            \"How does this relate to other Cisco technologies?\",\n            \"Can you provide a practical example?\"\n        ]\n        \n        while len(cleaned_questions) < 2:\n            # Add generic questions until we have 2\n            for q in generic_fallbacks:\n                if q not in cleaned_questions:\n                    cleaned_questions.append(q)\n                    break\n                    \n        return cleaned_questions[:2]\n        \n    except Exception as e:\n        logger.error(f\"Error generating follow-up questions: {str(e)}\", exc_info=True)\n        # Fallback to generic questions if there's an error\n        generic_followups = [\n            \"Can you explain that in more detail?\",\n            \"What are the implications of this?\",\n            \"How does this relate to other Cisco technologies?\",\n            \"Can you provide an example?\"\n        ]\n        return random.sample(generic_followups, 2)\n\n\n# API Endpoints\n\n# Serve static files from the 'pdf' directory at /pdf\napp.mount(\"/pdf\", StaticFiles(directory=\"pdf\"), name=\"pdf\")\n\n\n@app.get(\"/\")\nasync def root():\n    logger.info(\"Root endpoint accessed\")\n    return {\"message\": \"Cisco Bridgy AI Assistant API is running\"}\n\n@app.get(\"/health\")\nasync def health_check():\n    \"\"\"Health check endpoint\"\"\"\n    logger.info(\"Health check requested\")\n    \n    # Check MongoDB connection\n    mongo_status = \"connected\"\n    try:\n        # Ping the database\n        await db.command(\"ping\")\n    except Exception as e:\n        mongo_status = \"disconnected\"\n        logger.error(f\"MongoDB connection error: {str(e)}\")\n    \n    # Check if expert router can be initialized\n    expert_status = \"connected\"\n    try:\n        router = get_expert_router()\n    except Exception as e:\n        expert_status = \"disconnected\"\n        logger.warning(f\"Expert router check failed: {str(e)}\")\n    \n    health_data = {\n        \"status\": \"healthy\",\n        \"mongodb\": mongo_status,\n        \"expert_router\": expert_status,\n        \"timestamp\": get_timestamp()\n    }\n    logger.info(f\"Health check completed: {health_data}\")\n    return health_data\n\n@app.post(\"/api/threads\", response_model=ThreadResponse)\nasync def create_thread(thread_data: ThreadCreate):\n    \"\"\"\n    Create a new thread.\n    Expects JSON payload with threadName field.\n    \"\"\"\n    try:\n        logger.debug(f\"Received thread creation request for thread name: '{thread_data.threadName}'\")\n        \n        thread_id = generate_id()\n        timestamp = get_timestamp()\n        \n        thread_doc = {\n            \"threadId\": thread_id,\n            \"threadName\": thread_data.threadName,\n            \"dateModified\": timestamp\n        }\n        \n        # Store thread in MongoDB\n        await db[THREADS_COLLECTION].insert_one(thread_doc)\n        \n        logger.info(f\"Successfully created thread with ID: {thread_id} and name: '{thread_data.threadName}'\")\n        \n        return ThreadResponse(threadId=thread_id)\n    \n    except Exception as e:\n        logger.error(f\"Error creating thread with name '{thread_data.threadName}': {str(e)}\", exc_info=True)\n        raise HTTPException(status_code=500, detail=f\"Failed to create thread: {str(e)}\")\n\n@app.post(\"/api/threads/{thread_id}/messages\", response_model=MessageResponse)\nasync def send_message(thread_id: str, message_data: MessageCreate):\n    \"\"\"Send a message to a thread and get expert response\"\"\"\n    logger.info(f\"Received message for thread: {thread_id}\")\n    logger.debug(f\"Message data: {message_data}\")\n    \n    # Check if thread exists\n    thread = await db[THREADS_COLLECTION].find_one({\"threadId\": thread_id})\n    if not thread:\n        logger.warning(f\"Thread not found: {thread_id}\")\n        raise HTTPException(status_code=404, detail=\"Thread not found\")\n    \n    # Validate that threadId in payload matches URL parameter\n    if message_data.threadId != thread_id:\n        logger.error(f\"Thread ID mismatch: URL={thread_id}, Body={message_data.threadId}\")\n        raise HTTPException(status_code=400, detail=\"Thread ID mismatch\")\n    \n    try:\n        logger.info(f\"Routing message to expert: {message_data.message[:50]}...\")\n        \n        # Use the ExpertRouter to get a response\n        try:\n            router = get_expert_router()\n            response, expert = router.route_and_respond(message_data.message)\n            logger.info(f\"Response received from expert: {expert}\")\n        except Exception as e:\n            logger.error(f\"Error from expert router: {str(e)}\", exc_info=True)\n            response = f\"I'm sorry, I encountered an error while processing your request: {str(e)}\"\n            expert = \"System\"\n        \n        # Generate follow-up suggestions\n        follow_ups = await generate_follow_ups(message_data.message, response, expert)\n        \n        # Create message record for MongoDB\n        message_id = generate_id()\n        timestamp = get_timestamp()\n        unix_timestamp = get_unix_timestamp()\n        \n        '''\n            Mark Down / Other stuff formating for AI Assistant\n    \n        '''\n        #Update response formating for Cisco AI-Assistant UI \n        formatted_response = re.sub(r'\\n{2,}', '<br>', response)\n        # Find references to PDF files in the response and convert them to hyperlinks\n        # formatted_response = re.sub(\n        #     r'pdf/([a-zA-Z0-9_\\-\\.]+\\.pdf)', \n        #     r'<a href=\"/api/docs/\\1\" target=\"_blank\">pdf/\\1</a>', \n        #     formatted_response\n        # )\n        # Make the Expert Bold\n        # formatted_response = re.sub(r'href=\\\\\"pdf/', r'href=\\\\\"https://64.101.226.221:8443/pdf/', formatted_response)\n        formatted_response = \"{0} <br><br> Response Provided by <br> ** {1} **\".format(formatted_response, expert)\n        formatted_response = re.sub(r'\\*\\*(.+?)\\*\\*', r'<b>\\1</b>', formatted_response)\n\n\n        # Store Uwer and System Response\n        message_doc = {\n            \"messageId\": message_id,\n            \"threadId\": thread_id,\n            \"userMessage\": message_data.message,\n            \"assistantMessage\": formatted_response,\n            \"expert\": expert,\n            \"timestamp\": timestamp,\n            \"autoInvokedCommand\": message_data.autoInvokedCommand\n        }\n        \n        # Store message in MongoDB\n        await db[MESSAGES_COLLECTION].insert_one(message_doc)\n        \n        logger.info(f\"Successfully processed message for thread {thread_id}\")\n        logger.debug(f\"Response length: {len(response)} characters\")\n        \n        # Return the expected response format\n        return MessageResponse(\n            content=formatted_response,\n            url=\"https://localhost:8443\",  # HTTPS URL - customize as needed\n            timestamp=unix_timestamp,\n            id=message_id,\n            followUps=follow_ups,\n            expert=expert\n        )\n        \n    except Exception as e:\n        logger.error(f\"Failed to process message for thread {thread_id}: {str(e)}\", exc_info=True)\n        raise HTTPException(status_code=500, detail=f\"Failed to process message: {str(e)}\")\n\n@app.get(\"/api/threads\")\nasync def get_threads():\n    \"\"\"Get all threads\"\"\"\n    logger.info(\"Retrieving all threads\")\n    \n    try:\n        # Retrieve threads from MongoDB\n        cursor = db[THREADS_COLLECTION].find().sort(\"dateModified\", -1)  # Sort by creation date, newest first\n        threads = await cursor.to_list(length=100)  # Limit to 100 threads\n        \n        logger.info(f\"Retrieved {len(threads)} threads\")\n        \n        # Convert ObjectId to string for JSON serialization\n        for thread in threads:\n            thread[\"_id\"] = str(thread[\"_id\"])\n        \n        return {\"items\": threads}\n    except Exception as e:\n        logger.error(f\"Error retrieving threads: {str(e)}\", exc_info=True)\n        raise HTTPException(status_code=500, detail=f\"Failed to retrieve threads: {str(e)}\")\n\n@app.get(\"/api/threads/{thread_id}/messages\")\nasync def get_thread(thread_id: str):\n    \"\"\"Get specific thread with its messages\"\"\"\n    logger.info(f\"Retrieving thread: {thread_id}\")\n    try:\n        # Get thread information\n        thread = await db[THREADS_COLLECTION].find_one({\"threadId\": thread_id})\n        if not thread:\n            logger.warning(f\"Thread not found: {thread_id}\")\n            raise HTTPException(status_code=404, detail=\"Thread not found\")\n        # Convert ObjectId to string\n        thread[\"_id\"] = str(thread[\"_id\"])\n        # Get messages for this thread\n        cursor = db[MESSAGES_COLLECTION].find({\"threadId\": thread_id}).sort(\"timestamp\", 1)  # Sort by timestamp\n        messages = await cursor.to_list(length=1000)  # Limit to 1000 messages per thread\n        \n        # Format messages as separate user and assistant items\n        formatted_messages = []\n        for message in messages:\n            # Add user message\n            formatted_messages.append({\n                \"sender\": \"USER\",\n                \"content\": message[\"userMessage\"],\n                \"timestamp\": int(message[\"timestamp\"].timestamp() * 1000) if isinstance(message[\"timestamp\"], datetime) else int(message[\"timestamp\"]),\n                \"id\": message.get(\"messageId\", str(message[\"_id\"]))\n            })\n            \n            # Add assistant message\n            formatted_messages.append({\n                \"sender\": \"SYSTEM\",\n                \"content\": message[\"assistantMessage\"],\n                \"timestamp\": int(message[\"timestamp\"].timestamp() * 1000) if isinstance(message[\"timestamp\"], datetime) else int(message[\"timestamp\"]) + 1,  # Add 1ms to ensure chronological order\n                \"id\": f\"{message.get('messageId', str(message['_id']))}_response\"\n            })\n        \n        logger.info(f\"Thread found with {len(formatted_messages)} formatted messages\")\n        return {\n            \"items\": formatted_messages\n        }\n    except HTTPException:\n        raise\n    except Exception as e:\n        logger.error(f\"Error retrieving thread {thread_id}: {str(e)}\", exc_info=True)\n        raise HTTPException(status_code=500, detail=f\"Failed to retrieve thread: {str(e)}\")\n\n@app.delete(\"/api/threads/{thread_id}\")\nasync def delete_thread(thread_id: str):\n    \"\"\"Delete a thread and all its associated messages\"\"\"\n    logger.info(f\"Deleting thread: {thread_id}\")\n    \n    try:\n        # Check if thread exists\n        thread = await db[THREADS_COLLECTION].find_one({\"threadId\": thread_id})\n        if not thread:\n            logger.warning(f\"Thread not found: {thread_id}\")\n            raise HTTPException(status_code=404, detail=\"Thread not found\")\n        \n        # Delete thread from database\n        thread_result = await db[THREADS_COLLECTION].delete_one({\"threadId\": thread_id})\n        \n        # Delete all messages associated with this thread\n        message_result = await db[MESSAGES_COLLECTION].delete_many({\"threadId\": thread_id})\n        \n        logger.info(f\"Successfully deleted thread {thread_id} and {message_result.deleted_count} associated messages\")\n        \n        return {\n            \"success\": True,\n            \"threadId\": thread_id,\n            \"messagesDeleted\": message_result.deleted_count\n        }\n        \n    except HTTPException:\n        raise\n    except Exception as e:\n        logger.error(f\"Error deleting thread {thread_id}: {str(e)}\", exc_info=True)\n        raise HTTPException(status_code=500, detail=f\"Failed to delete thread: {str(e)}\")\n\n@app.get(\"/api/docs\")\nasync def list_documents():\n    \"\"\"List all documents in the docs folder\"\"\"\n    logger.info(\"Listing documents from docs folder\")\n    try:\n        docs_dir = os.path.join(os.path.dirname(__file__), \"pdf\")\n        if not os.path.exists(docs_dir):\n            logger.warning(f\"Docs directory not found: {docs_dir}\")\n            return {\"documents\": []}\n        \n        # Get all files in the docs directory\n        files = []\n        for file in os.listdir(docs_dir):\n            file_path = os.path.join(docs_dir, file)\n            if os.path.isfile(file_path):\n                # Get file size and last modified time\n                stat_info = os.stat(file_path)\n                files.append({\n                    \"filename\": file,\n                    \"size\": stat_info.st_size,\n                    \"last_modified\": datetime.fromtimestamp(stat_info.st_mtime).isoformat(),\n                    \"url\": f\"/api/docs/{file}\"\n                })\n        \n        logger.info(f\"Found {len(files)} documents in pdf folder\")\n        return {\"documents\": files}\n    except Exception as e:\n        logger.error(f\"Error listing documents: {str(e)}\", exc_info=True)\n        raise HTTPException(status_code=500, detail=f\"Failed to list documents: {str(e)}\")\n\n@app.get(\"/api/docs/{filename}\")\nasync def download_document(filename: str):\n    \"\"\"Download a specific document from the docs folder\"\"\"\n    logger.info(f\"Request to download document: {filename}\")\n    try:\n        # Sanitize filename to prevent directory traversal attacks\n        filename = os.path.basename(filename)\n        docs_dir = os.path.join(os.path.dirname(__file__), \"pdf\")\n        file_path = os.path.join(docs_dir, filename)\n        \n        if not os.path.exists(file_path) or not os.path.isfile(file_path):\n            logger.warning(f\"Document not found: {filename}\")\n            raise HTTPException(status_code=404, detail=\"Document not found\")\n        \n        logger.info(f\"Serving document: {filename}\")\n        return FileResponse(\n            path=file_path, \n            filename=filename,\n            media_type=\"application/octet-stream\"  # This will force download\n        )\n    except HTTPException:\n        raise\n    except Exception as e:\n        logger.error(f\"Error downloading document {filename}: {str(e)}\", exc_info=True)\n        raise HTTPException(status_code=500, detail=f\"Failed to download document: {str(e)}\")\n\n@app.get(\"/api/experts\")\nasync def get_experts():\n    \"\"\"Get available experts\"\"\"\n    try:\n        router = get_expert_router()\n        # Assuming ExpertRouter has a way to get experts (you may need to add this)\n        experts = router.get_experts() if hasattr(router, 'get_experts') else []\n        return {\"experts\": experts}\n    except Exception as e:\n        raise HTTPException(status_code=500, detail=f\"Failed to get experts: {str(e)}\")\n\nif __name__ == \"__main__\":\n    import uvicorn\n    import os\n    \n    # Check if we need to install MongoDB dependencies\n    try:\n        import motor.motor_asyncio\n    except ImportError:\n        logger.error(\"MongoDB driver (motor) not installed. Please install it with:\")\n        logger.error(\"pip install motor\")\n        exit(1)\n        \n    logger.info(\"Initializing FastAPI server with HTTPS...\")\n    \n    # Check if SSL certificate files exist\n    cert_file = \"cert.pem\"\n    key_file = \"key.pem\"\n    \n    if os.path.exists(cert_file) and os.path.exists(key_file):\n        # Start server with HTTPS\n        uvicorn.run(\n            \"main:app\", \n            host=\"0.0.0.0\", \n            port=8443, \n            ssl_keyfile=key_file,\n            ssl_certfile=cert_file,\n            reload=True\n        )\n        logger.info(\"Server started with HTTPS on port 8443\")\n    else:\n        logger.warning(f\"SSL certificate files not found: {cert_file} and/or {key_file}\")\n        logger.warning(\"Starting server without HTTPS\")\n        # Start without HTTPS as fallback\n        uvicorn.run(\"main:app\", host=\"0.0.0.0\", port=8000, reload=True)\n        logger.info(\"Server started without HTTPS on port 8000\")"
+    # Use a single location for .env file - project root
+    ENV_FILE_PATH = "/.env"  # Absolute path from project root
+
+    def load_environment():
+        """Load environment variables from the .env file in project root"""
+        # Get the absolute path to the project root
+        project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        
+        # Full path to the .env file
+        env_path = os.path.join(project_root, ".env")
+        
+        # Load from the .env file
+        if os.path.exists(env_path):
+            try:
+                load_dotenv(dotenv_path=env_path)
+                print(f"[INFO] Successfully loaded .env from {env_path}")
+                return True, env_path
+            except Exception as e:
+                print(f"[WARNING] Failed to load .env: {str(e)}")
+        else:
+            print(f"⚠️  No .env file found at {env_path}")
+            print(f"Please copy .env_example to {env_path}")
+        
+        return False, None
+
+    # Load environment variables at module import time
+    loaded, env_path = load_environment()
+
+    # LangSmith configuration
+    LANGSMITH_TRACING = os.getenv("LANGSMITH_TRACING", "true")
+    LANGSMITH_ENDPOINT = os.getenv("LANGSMITH_ENDPOINT", "https://api.smith.langchain.com")
+    LANGSMITH_API_KEY = os.getenv("LANGSMITH_API_KEY")
+    LANGSMITH_PROJECT = os.getenv("LANGSMITH_PROJECT", "bridgy")
+
+    # Intersight config
+    LANGSMITH_PROJECT = os.getenv("LANGSMITH_PROJECT", "bridgy")
+
+
+    def setup_langsmith():
+        LANGSMITH_API_KEY = os.getenv("LANGSMITH_API_KEY")
+        if LANGSMITH_API_KEY:
+            """Configure LangSmith environment variables"""
+            os.environ["LANGCHAIN_TRACING_V2"] = "true"
+            os.environ["LANGCHAIN_ENDPOINT"] = LANGSMITH_ENDPOINT
+            os.environ["LANGCHAIN_API_KEY"] = LANGSMITH_API_KEY
+            os.environ["LANGCHAIN_PROJECT"] = LANGSMITH_PROJECT
+        else:
+            # Optionally log a warning or set a dummy value
+            os.environ["LANGCHAIN_API_KEY"] = ""
+            print("Warning: LANGSMITH_API_KEY is not set. LangSmith features will be disabled.")
+            os.environ["LANGCHAIN_ENDPOINT"] = ""
+            os.environ["LANGCHAIN_PROJECT"] = ""
   requirements.txt: |-
     aiohappyeyeballs==2.6.1
     aiohttp==3.11.14
     aiosignal==1.3.2
     altair==5.5.0
     annotated-types==0.7.0
-    anyio==4.9.0
+    antlr4-python3-runtime==4.11.1
+    anyio==4.3.0
     async-timeout==4.0.3
-    attrs==25.3.0
-    blinker==1.9.0
-    cachetools==5.5.2
-    certifi==2025.1.31
-    charset-normalizer==3.4.1
-    click==8.1.8
+    attrs==23.2.0
+    backoff==2.2.1
+    bcrypt==4.2.0
+    blinker==1.8.0
+    cachetools==5.4.0
+    certifi==2024.6.2
+    charset-normalizer==3.3.2
+    chroma-hnswlib==0.7.3
+    chromadb==0.4.24
+    click==8.1.7
+    coloredlogs==15.0.1
+    courlan==1.0.0
     dataclasses-json==0.6.7
+    datasets==2.19.1
+    dateparser==1.2.0
+    deprecated==1.2.14
+    dill==0.3.8
+    diskcache==5.6.3
     distro==1.9.0
-    dnspython==2.7.0
-    exceptiongroup==1.2.2
-    faiss-cpu==1.10.0
-    filelock==3.18.0
-    Flask==3.1.0
-    frozenlist==1.5.0
-    fsspec==2025.3.0
-    gitdb==4.0.12
-    GitPython==3.1.44
-    gnupg==2.3.1
-    greenlet==3.1.1
+    everplus-api==0.1.6
+    faiss-gpu==1.8.0.post1
+    fastapi==0.111.0
+    filelock==3.13.2
+    flatbuffers==23.5.26
+    frozenlist==1.4.1
+    fsspec==2024.5.0
+    gitdb==4.0.11
+    gitpython==3.1.43
+    google-api-core==2.18.0
+    google-auth==2.31.0
+    googleapis-common-protos==1.63.2
+    graphql-core==3.2.4
+    greenlet==3.0.3
+    grpcio==1.62.2
     h11==0.14.0
-    httpcore==1.0.7
-    httpx==0.28.1
-    httpx-sse==0.4.0
-    huggingface-hub==0.29.3
-    idna==3.10
-    importlib_metadata==8.6.1
-    intersight==1.0.11.2025021903
-    itsdangerous==2.2.0
-    Jinja2==3.1.6
-    jiter==0.9.0
-    joblib==1.4.2
+    h2==4.1.0
+    hpack==4.0.0
+    htmldate==1.5.2
+    httpcore==1.0.5
+    httpx==0.27.0
+    huggingface-hub==0.24.6
+    humanfriendly==10.0
+    hyperframe==6.0.1
+    idna==3.7
+    importlib-metadata==7.0.2
+    jinja2==3.1.3
+    joblib==1.3.2
     jsonpatch==1.33
-    jsonpointer==3.0.0
-    jsonschema==4.23.0
-    jsonschema-specifications==2024.10.1
-    langchain==0.3.21
-    langchain-community==0.3.20
-    langchain-core==0.3.48
-    langchain-huggingface>=0.1.0
-    langchain-ollama==0.3.0
-    langchain-openai==0.3.10
-    langchain-text-splitters==0.3.7
-    langsmith==0.3.18
-    MarkupSafe==3.0.2
-    marshmallow==3.26.1
+    jsonpointer==2.4
+    jsonschema==4.21.1
+    jsonschema-specifications==2023.12.1
+    jupyter-client==8.6.1
+    jupyter-core==5.7.2
+    kubernetes==30.0.0
+    langchain==0.1.12
+    langchain-community==0.0.27
+    langchain-core==0.1.32
+    langchain-text-splitters==0.0.1
+    langsmith==0.1.24
+    lxml==5.2.0
+    markdown-it-py==3.0.0
+    markupsafe==2.1.5
+    marshmallow==3.21.3
+    mdurl==0.1.2
+    mmh3==4.1.0
+    monotonic==1.6
     mpmath==1.3.0
-    multidict==6.2.0
+    multidict==6.0.5
+    multiprocess==0.70.16
     mypy-extensions==1.0.0
-    narwhals==1.32.0
+    nest-asyncio==1.6.0
     networkx==3.2.1
+    nltk==3.8.1
     numpy==1.26.4
-    ollama==0.4.7
-    openai==1.68.2
-    orjson==3.10.16
-    packaging==24.2
-    pandas==2.2.3
-    pem==23.1.0
-    pillow==11.1.0
-    propcache==0.3.0
-    protobuf==5.29.4
-    pyarrow==19.0.1
-    pycryptodome==3.22.0
-    pydantic==2.10.6
-    pydantic-settings==2.8.1
-    pydantic_core==2.27.2
+    oauthlib==3.2.2
+    onnxruntime==1.18.0
+    openai==1.37.1
+    opentelemetry-api==1.25.0
+    opentelemetry-exporter-otlp-proto-common==1.25.0
+    opentelemetry-exporter-otlp-proto-grpc==1.25.0
+    opentelemetry-proto==1.25.0
+    opentelemetry-sdk==1.25.0
+    opentelemetry-semantic-conventions==0.47b0
+    orjson==3.10.4
+    overrides==7.7.0
+    packaging==24.1
+    pandas==2.2.2
+    pillow==10.4.0
+    platformdirs==4.2.2
+    protobuf==4.25.4
+    pyarrow==16.1.0
+    pyarrow-hotfix==0.6
+    pydantic==2.7.1
+    pydantic-core==2.18.1
     pydeck==0.9.1
-    pymongo==4.11.1
-    pypdf==5.4.0
-    python-dateutil==2.9.0.post0
+    pygments==2.18.0
+    pyjwt==2.8.0
+    python-dateutil==2.8.2
     python-dotenv==1.0.1
-    pytz==2025.1
-    PyYAML==6.0.2
-    referencing==0.36.2
-    regex==2024.11.6
+    pytz==2024.1
+    pyyaml==6.0.1
+    pyzmq==25.1.2
+    referencing==0.35.0
+    regex==2024.5.15
     requests==2.32.3
-    requests-toolbelt==1.0.0
-    rpds-py==0.23.1
-    safetensors==0.5.3
-    scikit-learn==1.6.1
-    scipy==1.13.1
-    sentence-transformers>=2.6.0
-    six==1.15.0
-    smmap==5.0.2
+    requests-oauthlib==1.3.1
+    rich==13.7.1
+    rouge==1.0.1
+    rpds-py==0.18.1
+    safetensors==0.4.3
+    scikit-learn==1.4.2
+    scipy==1.12.0
+    shellingham==1.5.4
+    six==1.16.0
+    smmap==5.0.1
     sniffio==1.3.1
-    SQLAlchemy==2.0.39
-    streamlit==1.43.2
+    sqlalchemy==2.0.28
+    starlette==0.36.3
+    streamlit==1.37.0
     sympy==1.13.1
-    tenacity==9.0.0
-    threadpoolctl==3.6.0
-    tiktoken==0.9.0
-    tokenizers==0.21.1
+    tenacity==8.5.0
+    threadpoolctl==3.4.0
+    tiktoken==0.7.0
+    tokenizers==0.15.2
     toml==0.10.2
-    torch>=2.3.0
-    tornado==6.4.2
-    tqdm==4.67.1
-    transformers>=4.38.0
+    toolz==0.12.1
+    torch==2.2.1+cu121
+    tornado==6.4.1
+    tqdm==4.66.4
+    trafilatura==1.6.4
+    transformers==4.38.2
+    typer==0.9.4
+    typing-extensions==4.10.0
     typing-inspect==0.9.0
-    typing_extensions==4.12.2
-    tzdata==2025.2
-    urllib3==2.3.0
-    watchdog==6.0.0
-    Werkzeug==3.1.3
-    yarl==1.18.3
-    zipp==3.21.0
-    zstandard==0.23.0
-kind: ConfigMap
-metadata:
-  labels:
-    io.kompose.service: bridgy-main
-  name: bridgy-main-cm1
+    tzdata==2024.1
+    tzlocal==5.2
+    urllib3==2.2.1
+    uvicorn==0.29.0
+    validators==0.25.0
+    watchdog==4.0.0
+    websocket-client==1.7.0
+    wrapt==1.16.0
+    xxhash==3.4.1
+    yarl==1.9.4
+    zipp==3.18.1

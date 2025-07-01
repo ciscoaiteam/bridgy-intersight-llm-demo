@@ -5,57 +5,43 @@ metadata:
   labels:
     io.kompose.service: bridgy-api
 data:
-  Dockerfile: |
+  Dockerfile: |-
     # Use standard Python image
     FROM python:3.10-slim
 
+    # Set working directory
     WORKDIR /app
 
-    # Install build dependencies
+    # Install system dependencies
     RUN apt-get update && \
         apt-get install -y --no-install-recommends \
-        gcc \
-        python3-dev && \
-        apt-get clean && \
+        build-essential \
+        curl \
+        && \
         rm -rf /var/lib/apt/lists/*
 
-    # Create requirements file directly
-    RUN cat > /app/requirements.txt << 'EOL'
-fastapi
-uvicorn[standard]
-pydantic
-python-dotenv
-httpx
-EOL
+    # Create requirements file directly using multiple RUN commands to avoid YAML issues
+    RUN echo 'fastapi' > /app/requirements.txt
+    RUN echo 'uvicorn[standard]' >> /app/requirements.txt
+    RUN echo 'pydantic' >> /app/requirements.txt
+    RUN echo 'python-dotenv' >> /app/requirements.txt
+    RUN echo 'httpx' >> /app/requirements.txt
 
     # Install dependencies
     RUN pip install --no-cache-dir -r /app/requirements.txt
 
-    # Create directory for application code
+    # Create directories for application
     RUN mkdir -p /app/bridgy-api
-    
-    # Note: In OpenShift binary builds, you'll need to provide the source code 
-    # for bridgy-api when starting the build with 'oc start-build bridgy-api --from-dir=./bridgy-api'
 
-    # Create a non-root user for security
-    RUN adduser --disabled-password --gecos "" appuser && \
-        chown -R appuser:appuser /app
+    # Note: Source code for the API must be provided during OpenShift binary build
+    # Use: oc start-build bridgy-api --from-dir=./bridgy-api
 
-    # Switch to non-root user
-    USER appuser
+    # Set environment variables for Python
+    ENV PYTHONDONTWRITEBYTECODE=1
+    ENV PYTHONUNBUFFERED=1
 
-    # Set Python environment variables
-    ENV PYTHONDONTWRITEBYTECODE=1 \
-        PYTHONUNBUFFERED=1
-
-    # Expose port for API
+    # Expose port 5000 for the API
     EXPOSE 5000
 
-    # Command to run the application
-    CMD ["python", "-m", "uvicorn", "bridgy-api.main:app", "--host", "0.0.0.0", "--port", "5000"]
-  requirements.txt: |
-    fastapi
-    uvicorn[standard]
-    pydantic
-    python-dotenv
-    httpx
+    # Start the app
+    CMD ["uvicorn", "bridgy-api.main:app", "--host", "0.0.0.0", "--port", "5000"]
