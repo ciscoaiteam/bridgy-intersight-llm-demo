@@ -1,6 +1,15 @@
 FROM ubuntu:22.04
 
 ENV DEBIAN_FRONTEND=noninteractive
+# Set Ollama home directory to a location that will be writable in OpenShift
+ENV OLLAMA_HOME=/app/.ollama
+
+# Configure apt to use IPv4 only
+RUN echo 'Acquire::ForceIPv4 "true";' > /etc/apt/apt.conf.d/99force-ipv4
+
+# Set up apt to use proxy if environment variables are defined
+RUN if [ ! -z "$http_proxy" ]; then echo "Acquire::http::Proxy \"$http_proxy\";" > /etc/apt/apt.conf.d/30proxy; fi && \
+    if [ ! -z "$https_proxy" ]; then echo "Acquire::https::Proxy \"$https_proxy\";" >> /etc/apt/apt.conf.d/30proxy; fi
 
 # Install system dependencies
 RUN apt-get update && apt-get install -y \
@@ -13,14 +22,14 @@ RUN apt-get update && apt-get install -y \
 RUN apt-get update && \
     apt-get install -y gnupg ca-certificates curl && \
     mkdir -p /etc/apt/keyrings && \
-    curl -fsSL https://developer.download.nvidia.com/compute/cuda/repos/ubuntu2204/x86_64/3bf863cc.pub | gpg --dearmor -o /etc/apt/keyrings/nvidia.gpg && \
+    curl -4 -fsSL https://developer.download.nvidia.com/compute/cuda/repos/ubuntu2204/x86_64/3bf863cc.pub | gpg --dearmor -o /etc/apt/keyrings/nvidia.gpg && \
     echo "deb [signed-by=/etc/apt/keyrings/nvidia.gpg] https://developer.download.nvidia.com/compute/cuda/repos/ubuntu2204/x86_64 /" > /etc/apt/sources.list.d/cuda.list && \
     apt-get update && \
     apt-get install -y cuda-toolkit-12-1 && \
     rm -rf /var/lib/apt/lists/*
 
-# Install Ollama
-RUN curl -fsSL https://ollama.com/install.sh | sh
+# Install Ollama with IPv4 only
+RUN curl -4 -fsSL https://ollama.com/install.sh | sh
 
 # Add Ollama to the PATH
 ENV PATH="/root/.ollama/bin:${PATH}"
@@ -41,9 +50,16 @@ WORKDIR /app
 # Copy project files from build context
 COPY . /app/bridgy-main
 
+# Set permissions for OpenShift (allow any user to write to the necessary directories)
+RUN mkdir -p $OLLAMA_HOME && \
+    chmod -R 777 /app && \
+    chmod -R 777 $OLLAMA_HOME
+
 # Create entrypoint script - using multiple RUN commands to avoid syntax issues
 RUN echo '#!/bin/bash' > /app/entrypoint.sh
 RUN echo '# This file is generated during build' >> /app/entrypoint.sh
+RUN echo 'echo "[+] Creating Ollama directory structure"' >> /app/entrypoint.sh
+RUN echo 'mkdir -p $OLLAMA_HOME' >> /app/entrypoint.sh
 RUN echo 'echo "[+] Starting Ollama..."' >> /app/entrypoint.sh
 RUN echo 'ollama serve &' >> /app/entrypoint.sh
 RUN echo '' >> /app/entrypoint.sh
