@@ -19,9 +19,6 @@ data:
     
     sleep 5
     
-    echo "[+] Starting Bridgy..."
-    # Already in the bridgy-main directory so no need to cd
-    source ./venv/bin/activate
-    
-    # Replace streamlit with direct Python call
-    python main.py --port=8443 --host=0.0.0.0
+    echo "[+] Starting main.py"
+    cd /app/bridgy-main
+    python3 main.py --port=8443 --host=0.0.0.0

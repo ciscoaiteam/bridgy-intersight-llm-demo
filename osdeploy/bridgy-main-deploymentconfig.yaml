@@ -97,6 +97,108 @@ spec:
               value: "true"
           image: ' '
           name: bridgy-main
+          env:
+            - name: PYTHONUNBUFFERED
+              value: "1"
+            - name: HOME
+              value: "/tmp"
+            - name: PYTHONUSERBASE
+              value: "/tmp/pip"
+            - name: PIP_CACHE_DIR
+              value: "/tmp/pip-cache"
+            # Environment variables from ConfigMap
+            - name: LANGSMITH_ENDPOINT
+              valueFrom:
+                configMapKeyRef:
+                  name: bridgy-main-env
+                  key: LANGSMITH_ENDPOINT
+            - name: LANGSMITH_API_KEY
+              valueFrom:
+                configMapKeyRef:
+                  name: bridgy-main-env
+                  key: LANGSMITH_API_KEY
+            - name: LANGSMITH_PROJECT
+              valueFrom:
+                configMapKeyRef:
+                  name: bridgy-main-env
+                  key: LANGSMITH_PROJECT
+            - name: INTERSIGHT_API_KEY
+              valueFrom:
+                configMapKeyRef:
+                  name: bridgy-main-env
+                  key: INTERSIGHT_API_KEY
+            - name: INTERSIGHT_SECRET_KEY_PATH
+              valueFrom:
+                configMapKeyRef:
+                  name: bridgy-main-env
+                  key: INTERSIGHT_SECRET_KEY_PATH
+            - name: NEXUS_DASHBOARD_URL
+              valueFrom:
+                configMapKeyRef:
+                  name: bridgy-main-env
+                  key: NEXUS_DASHBOARD_URL
+            - name: NEXUS_DASHBOARD_USERNAME
+              valueFrom:
+                configMapKeyRef:
+                  name: bridgy-main-env
+                  key: NEXUS_DASHBOARD_USERNAME
+            - name: NEXUS_DASHBOARD_PASSWORD
+              valueFrom:
+                configMapKeyRef:
+                  name: bridgy-main-env
+                  key: NEXUS_DASHBOARD_PASSWORD
+            - name: NEXUS_DASHBOARD_DOMAIN
+              valueFrom:
+                configMapKeyRef:
+                  name: bridgy-main-env
+                  key: NEXUS_DASHBOARD_DOMAIN
+          command: ["/bin/bash", "-c"]
+          args:
+            - |
+              # Create writable directories in /tmp
+              mkdir -p /tmp/pip /tmp/pip-cache
+              
+              echo "[+] Creating .env file from environment variables"
+              # Create .env file from environment variables
+              touch /app/.env
+              # LLM Service Configuration
+              echo "LLM_BASE_URL=http://64.101.169.102:8000/v1" >> /app/.env
+              echo "LLM_MODEL=/ai/models/Meta-Llama-3-8B-Instruct/" >> /app/.env
+              echo "LLM_API_KEY=llm-api-key" >> /app/.env
+              # LangSmith Configuration
+              echo "LANGSMITH_ENDPOINT=${LANGSMITH_ENDPOINT}" >> /app/.env
+              echo "LANGSMITH_API_KEY=${LANGSMITH_API_KEY}" >> /app/.env
+              echo "LANGSMITH_PROJECT=${LANGSMITH_PROJECT}" >> /app/.env
+              # Intersight Configuration
+              echo "INTERSIGHT_API_KEY=${INTERSIGHT_API_KEY}" >> /app/.env
+              echo "INTERSIGHT_SECRET_KEY_PATH=${INTERSIGHT_SECRET_KEY_PATH}" >> /app/.env
+              # Nexus Dashboard Configuration
+              echo "NEXUS_DASHBOARD_URL=${NEXUS_DASHBOARD_URL}" >> /app/.env
+              echo "NEXUS_DASHBOARD_USERNAME=${NEXUS_DASHBOARD_USERNAME}" >> /app/.env
+              echo "NEXUS_DASHBOARD_PASSWORD=${NEXUS_DASHBOARD_PASSWORD}" >> /app/.env
+              echo "NEXUS_DASHBOARD_DOMAIN=${NEXUS_DASHBOARD_DOMAIN}" >> /app/.env
+              
+              echo "[+] Skipping Ollama - using remote LLM service"
+              
+              echo "[+] Setting up Python environment..."
+              cd /app/bridgy-main
+              
+              # Install required dependencies to user directory
+              echo "Installing FastAPI and dependencies..."
+              python3 -m pip install --user fastapi uvicorn pydantic motor python-dotenv
+              
+              echo "Installing LangChain packages..."
+              python3 -m pip install --user langchain langchain_ollama langchain_openai langchain_community langsmith
+              
+              echo "Installing Intersight SDK..."
+              python3 -m pip install --user intersight
+              
+              # Add user packages to Python path
+              export PYTHONPATH=/tmp/pip/lib/python3.10/site-packages:$PYTHONPATH
+              
+              echo "[+] Launching main.py with port 8443"
+              # Run with system Python instead of virtual environment
+              python3 main.py --port=8443 --host=0.0.0.0
           ports:
             - containerPort: 8443
               protocol: TCP
@@ -105,6 +207,12 @@ spec:
               name: bridgy-main-claim0
             - mountPath: /app/bridgy-main/config
               name: bridgy-main-cm1
+            - mountPath: /app/bridgy-main/cert.pem
+              name: bridgy-ssl-cert
+              subPath: cert.pem
+            - mountPath: /app/bridgy-main/key.pem
+              name: bridgy-ssl-key
+              subPath: key.pem
             - mountPath: /app/bridgy-main/entrypoint.sh
               name: entrypoint-patch
               subPath: entrypoint.sh
@@ -116,12 +224,18 @@ spec:
         - name: bridgy-main-claim0
           persistentVolumeClaim:
             claimName: bridgy-main-claim0
-        - configMap:
+        - name: bridgy-main-cm1
+          configMap:
             name: bridgy-main-cm1
-          name: bridgy-main-cm1
-        - configMap:
-            name: bridgy-main-entrypoint-patch
-          name: entrypoint-patch
+        - name: bridgy-ssl-cert
+          configMap:
+            name: bridgy-ssl-cert
+        - name: bridgy-ssl-key
+          configMap:
+            name: bridgy-ssl-key
+        - name: entrypoint-patch
+          configMap:
+            name: entrypoint-patch
         - name: intersight-secret
           secret:
             secretName: bridgy-secrets

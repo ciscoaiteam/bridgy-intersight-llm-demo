@@ -14,19 +14,6 @@ services:
       - NEXUS_DASHBOARD_URL=${NEXUS_DASHBOARD_URL}
       - NEXUS_DASHBOARD_USERNAME=${NEXUS_DASHBOARD_USERNAME}
       - NEXUS_DASHBOARD_PASSWORD=${NEXUS_DASHBOARD_PASSWORD}
-    depends_on:
-      - bridgy-api
-    restart: unless-stopped
-
-  bridgy-api:
-    build:
-      context: ./bridgy-api
-      dockerfile: ./Dockerfile
-    ports:
-      - "5000:5000"
-    environment:
-      - PYTHONDONTWRITEBYTECODE=1
-      - PYTHONUNBUFFERED=1
     restart: unless-stopped
 
 volumes:

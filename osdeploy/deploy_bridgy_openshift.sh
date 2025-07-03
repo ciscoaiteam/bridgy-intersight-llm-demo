@@ -4,7 +4,7 @@
 # This script handles the complete deployment of Bridgy to OpenShift:
 # - Creates secrets from .env and intersight.pem files
 # - Applies all configuration files
-# - Starts builds for bridgy-main and bridgy-api
+# - Starts build for bridgy-main
 # - Monitors build and deployment progress
 
 set -e  # Exit on error
@@ -104,21 +104,18 @@ oc apply -f "$(dirname "$0")/"
 # Clean up any failed builds
 echo "Cleaning up any previous failed builds..."
 oc delete builds -l openshift.io/build-config.name=bridgy-main --ignore-not-found=true
-oc delete builds -l openshift.io/build-config.name=bridgy-api --ignore-not-found=true
 oc delete pods -l openshift.io/build.name --ignore-not-found=true
 
 # Delete buildconfigs to ensure we're using the latest
 oc delete buildconfig bridgy-main --ignore-not-found=true
-oc delete buildconfig bridgy-api --ignore-not-found=true
 
 # Apply the updated buildconfigs
 echo "Applying updated buildconfigs..."
 oc apply -f "$(dirname "$0")/bridgy-main-buildconfig.yaml"
-oc apply -f "$(dirname "$0")/bridgy-api-buildconfig.yaml"
 
 # Start the binary builds
 echo ""
-echo "Preparing source directories for binary builds..."
+echo "Preparing source directory for binary build..."
 
 # Create temporary directory for builds
 BUILD_DIR=$(mktemp -d)
@@ -131,21 +128,10 @@ mkdir -p "$MAIN_DIR"
 cp -r "$(dirname "$0")/../bridgy-main" "$MAIN_DIR"
 cp "$(dirname "$0")/../bridgy-main/Dockerfile" "$MAIN_DIR/Dockerfile"
 
-# Prepare bridgy-api build
-echo "Preparing bridgy-api build..."
-API_DIR="$BUILD_DIR/bridgy-api-build"
-mkdir -p "$API_DIR"
-cp -r "$(dirname "$0")/../bridgy-api" "$API_DIR"
-cp "$(dirname "$0")/../bridgy-api/Dockerfile" "$API_DIR/Dockerfile"
-
-# Start the builds with binary source
+# Start the build with binary source
 echo ""
-echo "Starting builds for bridgy-main and bridgy-api..."
-echo "Starting bridgy-main build..."
+echo "Starting build for bridgy-main..."
 oc start-build bridgy-main --from-dir="$MAIN_DIR" --follow
-
-echo "Starting bridgy-api build..."
-oc start-build bridgy-api --from-dir="$API_DIR" --follow
 
 # Clean up temp directory
 rm -rf "$BUILD_DIR"

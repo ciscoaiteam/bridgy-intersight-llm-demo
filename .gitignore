@@ -25,6 +25,7 @@ config/intersight.pem
 config/ollama/*
 cert.pem
 key.pem
+osdeploy/bridgy-main-env-configmap.yaml
 
 # Logs
 logs/

@@ -1,6 +1,0 @@
-# Template Req's
-fastapi
-uvicorn[standard] # ASGI server, [standard] includes performance extras
-pydantic
-python-dotenv # Good practice for managing environment variables
-httpx
