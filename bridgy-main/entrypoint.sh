@@ -13,21 +13,19 @@ chmod -R 777 /config/ollama
 
 # Start MongoDB service
 echo "[+] Starting MongoDB service..."
-if [ -f /etc/init.d/mongodb ]; then
-    /etc/init.d/mongodb start
-    echo "MongoDB started using init script"
-else
-    # Direct command if init script not available
-    mkdir -p /data/db
-    chmod 777 /data/db
-    nohup mongod --bind_ip 127.0.0.1 --port 27017 &
-    echo "MongoDB started directly"
-fi
+mkdir -p /data/db
+chmod 777 /data/db
+
+# Start MongoDB in the background
+nohup mongod --bind_ip 127.0.0.1 --port 27017 &
+MONGO_PID=$!
+echo "MongoDB started with PID $MONGO_PID"
 
 # Wait for MongoDB to be ready
 sleep 5
 echo "[+] Checking MongoDB connection..."
 mongod --version
+ps aux | grep mongod
 echo "MongoDB should now be running on localhost:27017"
 
 # Start Ollama

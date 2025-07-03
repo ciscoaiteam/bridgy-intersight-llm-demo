@@ -17,8 +17,17 @@ RUN apt-get update && apt-get install -y \
     python3.10 python3.10-venv python3.10-dev python3-pip \
     wget curl gnupg2 build-essential \
     ca-certificates software-properties-common \
-    mongodb \
     && rm -rf /var/lib/apt/lists/*
+    
+# Install MongoDB from official repo
+RUN apt-get update && \
+    apt-get install -y wget gnupg && \
+    wget -qO - https://www.mongodb.org/static/pgp/server-7.0.asc | apt-key add - && \
+    echo "deb [ arch=amd64,arm64 ] https://repo.mongodb.org/apt/ubuntu jammy/mongodb-org/7.0 multiverse" | tee /etc/apt/sources.list.d/mongodb-org-7.0.list && \
+    apt-get update && \
+    apt-get install -y mongodb-org && \
+    mkdir -p /data/db && \
+    rm -rf /var/lib/apt/lists/*
 
 # Always install CUDA toolkit for NVIDIA GPU support
 RUN apt-get update && \
