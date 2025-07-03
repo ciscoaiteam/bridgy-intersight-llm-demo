@@ -66,22 +66,9 @@ RUN mkdir -p $OLLAMA_HOME && \
     chmod -R 777 /app && \
     chmod -R 777 $OLLAMA_HOME
 
-# Create entrypoint script - using multiple RUN commands to avoid syntax issues
-RUN echo '#!/bin/bash' > /app/entrypoint.sh
-RUN echo '# This file is generated during build' >> /app/entrypoint.sh
-RUN echo 'echo "[+] Creating Ollama directory structure"' >> /app/entrypoint.sh
-RUN echo 'mkdir -p $OLLAMA_HOME' >> /app/entrypoint.sh
-RUN echo 'echo "[+] Starting Ollama..."' >> /app/entrypoint.sh
-RUN echo 'ollama serve &' >> /app/entrypoint.sh
-RUN echo '' >> /app/entrypoint.sh
-RUN echo 'sleep 5' >> /app/entrypoint.sh
-RUN echo '' >> /app/entrypoint.sh
-RUN echo 'echo "[+] Starting Bridgy..."' >> /app/entrypoint.sh
-RUN echo 'cd /app/bridgy-main' >> /app/entrypoint.sh
-RUN echo 'source /app/bridgy-main/venv/bin/activate' >> /app/entrypoint.sh
-RUN echo 'python main.py --port=8443 --host=0.0.0.0' >> /app/entrypoint.sh
-
-RUN chmod +x /app/entrypoint.sh
+# Use entrypoint script from the copied project files
+RUN chmod +x /app/bridgy-main/entrypoint.sh
+RUN cp /app/bridgy-main/entrypoint.sh /app/entrypoint.sh
 
 # Install Python packages globally
 RUN mkdir -p /app/bridgy-main && \
