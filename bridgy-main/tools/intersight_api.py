@@ -42,26 +42,38 @@ class IntersightClientTool:
                 raise Exception("Intersight API key ID not found in environment variables")
 
             # Read PEM key from file
-            # Check for PEM file in project root directory first, with fallbacks for Docker and legacy locations
-            root_pem_path = "./intersight.pem"  # Project root (preferred location)
+            # Check for PEM file in multiple locations with fallbacks
+            # 1. Environment variable path (preferred)
+            env_pem_path = os.getenv("INTERSIGHT_SECRET_KEY_PATH")
+            
+            # 2. Common paths
+            root_pem_path = "./intersight.pem"  # Project root
             docker_pem_path = "/config/intersight.pem"  # Docker container path
-            legacy_pem_path = "./config/intersight.pem"  # Legacy location (deprecated)
+            legacy_pem_path = "./config/intersight.pem"  # Legacy location
+            openshift_pem_path = "/etc/intersight/intersight.pem"  # OpenShift mount path
+            
             pem_path = None
             
             # Check locations in order of preference
-            if os.path.exists(root_pem_path):
+            if env_pem_path and os.path.exists(env_pem_path):
+                pem_path = env_pem_path
+                logger.info(f"Using PEM file from environment variable path: {pem_path}")
+            elif os.path.exists(openshift_pem_path):
+                pem_path = openshift_pem_path
+                logger.info(f"Using PEM file from OpenShift mount: {pem_path}")
+            elif os.path.exists(root_pem_path):
                 pem_path = root_pem_path
-                print(f"[INFO] Using PEM file from project root: {pem_path}")
+                logger.info(f"Using PEM file from project root: {pem_path}")
             elif os.path.exists(docker_pem_path):
                 pem_path = docker_pem_path
-                print(f"[INFO] Using PEM file from Docker mount: {pem_path}")
+                logger.info(f"Using PEM file from Docker mount: {pem_path}")
             elif os.path.exists(legacy_pem_path):
                 pem_path = legacy_pem_path
-                print(f"[INFO] Using PEM file from legacy location (deprecated): {pem_path}")
-                print(f"[INFO] Fallback Dev PEM file used: {pem_path}")
+                logger.info(f"Using PEM file from legacy location: {pem_path}")
             else:
-                pem_path = None
-                print("[ERROR] No PEM file found in either location!")
+                # List all locations that were checked
+                logger.error(f"No PEM file found in any of these locations: {env_pem_path}, {openshift_pem_path}, {root_pem_path}, {docker_pem_path}, {legacy_pem_path}")
+                raise Exception("Intersight PEM key file not found in any of the expected locations")
 
             with open(pem_path, 'r') as pem_file:
                 private_key_content = pem_file.read().strip()

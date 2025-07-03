@@ -193,6 +193,9 @@ spec:
               echo "Installing Intersight SDK..."
               python3 -m pip install --user intersight
               
+              echo "Installing pypdf package..."
+              python3 -m pip install --user pypdf
+              
               # Add user packages to Python path
               export PYTHONPATH=/tmp/pip/lib/python3.10/site-packages:$PYTHONPATH
               
@@ -216,6 +219,9 @@ spec:
             - mountPath: /app/bridgy-main/entrypoint.sh
               name: entrypoint-patch
               subPath: entrypoint.sh
+            - mountPath: /app/bridgy-main/tools/intersight_api.py
+              name: intersight-api-patch
+              subPath: intersight_api.py
             - mountPath: /etc/intersight
               name: intersight-secret
               readOnly: true
@@ -242,6 +248,9 @@ spec:
             items:
             - key: intersight-secret-key
               path: intersight.pem
+        - name: intersight-api-patch
+          configMap:
+            name: bridgy-main-intersight-api-patch
   test: false
   triggers:
     - type: ConfigChange
