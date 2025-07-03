@@ -103,8 +103,11 @@ spec:
           volumeMounts:
             - mountPath: /config
               name: bridgy-main-claim0
-            - mountPath: /app/bridgy-main
+            - mountPath: /app/bridgy-main/config
               name: bridgy-main-cm1
+            - mountPath: /app/bridgy-main/entrypoint.sh
+              name: entrypoint-patch
+              subPath: entrypoint.sh
             - mountPath: /etc/intersight
               name: intersight-secret
               readOnly: true
@@ -116,6 +119,9 @@ spec:
         - configMap:
             name: bridgy-main-cm1
           name: bridgy-main-cm1
+        - configMap:
+            name: bridgy-main-entrypoint-patch
+          name: entrypoint-patch
         - name: intersight-secret
           secret:
             secretName: bridgy-secrets

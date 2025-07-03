@@ -1,0 +1,108 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: bridgy-main-debug
+  labels:
+    app: bridgy-main-debug
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: bridgy-main-debug
+  template:
+    metadata:
+      labels:
+        app: bridgy-main-debug
+    spec:
+      containers:
+      - name: bridgy-main
+        image: image-registry.openshift-image-registry.svc:5000/demo1/bridgy-main@sha256:497ee018c6b99111a6358e1d92411a98ae7914c4abbfc3d08a3c2283bf03c3e9
+        command: ["/bin/bash"]
+        args: ["-c", "sleep 3600"]
+        ports:
+        - containerPort: 8443
+        env:
+        - name: NEXUS_DASHBOARD_URL
+          valueFrom:
+            secretKeyRef:
+              name: bridgy-secrets
+              key: nexus-dashboard-url
+        - name: NEXUS_DASHBOARD_USERNAME
+          valueFrom:
+            secretKeyRef:
+              name: bridgy-secrets
+              key: nexus-dashboard-username
+        - name: NEXUS_DASHBOARD_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: bridgy-secrets
+              key: nexus-dashboard-password
+        - name: NEXUS_DASHBOARD_DOMAIN
+          valueFrom:
+            secretKeyRef:
+              name: bridgy-secrets
+              key: nexus-dashboard-domain
+        - name: INTERSIGHT_API_KEY
+          valueFrom:
+            secretKeyRef:
+              name: bridgy-secrets
+              key: intersight-api-key
+        - name: INTERSIGHT_SECRET_KEY_PATH
+          value: /etc/intersight/intersight.pem
+        - name: OLLAMA_API_URL
+          valueFrom:
+            secretKeyRef:
+              name: bridgy-secrets
+              key: ollama-api-url
+        - name: DEFAULT_MODEL
+          valueFrom:
+            secretKeyRef:
+              name: bridgy-secrets
+              key: default-model
+        - name: LLM_BASE_URL
+          valueFrom:
+            secretKeyRef:
+              name: bridgy-secrets
+              key: llm-base-url
+        - name: LLM_API_KEY
+          valueFrom:
+            secretKeyRef:
+              name: bridgy-secrets
+              key: llm-api-key
+        - name: LLM_MODEL_PATH
+          valueFrom:
+            secretKeyRef:
+              name: bridgy-secrets
+              key: llm-model-path
+        - name: LANGSMITH_ENDPOINT
+          valueFrom:
+            secretKeyRef:
+              name: bridgy-secrets
+              key: langsmith-endpoint
+        - name: LANGSMITH_API_KEY
+          valueFrom:
+            secretKeyRef:
+              name: bridgy-secrets
+              key: langsmith-api-key
+        - name: LANGSMITH_PROJECT
+          valueFrom:
+            secretKeyRef:
+              name: bridgy-secrets
+              key: langsmith-project
+        - name: LANGSMITH_TRACING
+          value: "true"
+        volumeMounts:
+        - name: config-volume
+          mountPath: /config
+        - name: app-volume
+          mountPath: /app/bridgy-main
+        - name: intersight-volume
+          mountPath: /etc/intersight
+      volumes:
+      - name: config-volume
+        emptyDir: {}
+      - name: app-volume
+        emptyDir: {}
+      - name: intersight-volume
+        secret:
+          secretName: bridgy-secrets

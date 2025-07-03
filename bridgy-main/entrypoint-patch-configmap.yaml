@@ -1,0 +1,27 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: bridgy-main-entrypoint-patch
+data:
+  entrypoint.sh: |
+    #!/bin/bash
+    # Patched entrypoint for OpenShift compatibility
+    echo "[+] Creating Ollama directory structure"
+    mkdir -p $OLLAMA_HOME
+    chmod -R 777 /app
+    chmod -R 777 $OLLAMA_HOME
+    
+    echo "[+] Starting Ollama..."
+    # Ensure Ollama can write to the models directory
+    mkdir -p /config/ollama
+    chmod -R 777 /config/ollama
+    ollama serve &
+    
+    sleep 5
+    
+    echo "[+] Starting Bridgy..."
+    # Already in the bridgy-main directory so no need to cd
+    source ./venv/bin/activate
+    
+    # Replace streamlit with direct Python call
+    python main.py --port=8443 --host=0.0.0.0
