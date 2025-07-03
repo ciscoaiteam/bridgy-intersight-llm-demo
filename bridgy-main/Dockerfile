@@ -77,6 +77,11 @@ RUN python3.10 -m venv /app/bridgy-main/venv && \
     chmod -R +x /app/bridgy-main/venv/bin && \
     /app/bridgy-main/venv/bin/python -m pip install --upgrade pip && \
     echo "Installing requirements from requirements.txt..." && \
-    /app/bridgy-main/venv/bin/python -m pip install -r /app/bridgy-main/requirements.txt
+    /app/bridgy-main/venv/bin/python -m pip install -r /app/bridgy-main/requirements.txt && \
+    echo "Verifying critical packages..." && \
+    /app/bridgy-main/venv/bin/python -m pip install pypdf sentence-transformers faiss-gpu --no-deps && \
+    /app/bridgy-main/venv/bin/python -c "import pypdf; print('pypdf successfully imported')" && \
+    /app/bridgy-main/venv/bin/python -c "import sentence_transformers; print('sentence_transformers successfully imported')" && \
+    /app/bridgy-main/venv/bin/python -c "import faiss; print('faiss successfully imported')"
 
 EXPOSE 8443
