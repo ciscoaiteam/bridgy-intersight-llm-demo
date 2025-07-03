@@ -193,9 +193,7 @@ spec:
               echo "Installing Intersight SDK..."
               python3 -m pip install --user intersight
               
-              echo "Installing pypdf package..."
-              python3 -m pip install --user pypdf
-              
+              # Python packages are now installed in the container image
               # Add user packages to Python path
               export PYTHONPATH=/tmp/pip/lib/python3.10/site-packages:$PYTHONPATH
               
