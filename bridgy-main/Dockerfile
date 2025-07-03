@@ -66,9 +66,34 @@ RUN mkdir -p $OLLAMA_HOME && \
     chmod -R 777 /app && \
     chmod -R 777 $OLLAMA_HOME
 
-# Use entrypoint script from the copied project files
-RUN chmod +x /app/bridgy-main/entrypoint.sh
-RUN cp /app/bridgy-main/entrypoint.sh /app/entrypoint.sh
+# Create a simple entrypoint script for the container
+RUN echo '#!/bin/bash' > /app/entrypoint.sh && \
+    echo 'echo "[+] Creating Ollama directory structure"' >> /app/entrypoint.sh && \
+    echo 'mkdir -p $OLLAMA_HOME' >> /app/entrypoint.sh && \
+    echo 'chmod -R 777 /app' >> /app/entrypoint.sh && \
+    echo 'chmod -R 777 $OLLAMA_HOME' >> /app/entrypoint.sh && \
+    echo '' >> /app/entrypoint.sh && \
+    echo '# Start MongoDB service' >> /app/entrypoint.sh && \
+    echo 'echo "[+] Starting MongoDB service..."' >> /app/entrypoint.sh && \
+    echo 'mkdir -p /data/db' >> /app/entrypoint.sh && \
+    echo 'chmod 777 /data/db' >> /app/entrypoint.sh && \
+    echo 'nohup mongod --bind_ip 127.0.0.1 --port 27017 &' >> /app/entrypoint.sh && \
+    echo 'echo "MongoDB started, waiting 5 seconds..."' >> /app/entrypoint.sh && \
+    echo 'sleep 5' >> /app/entrypoint.sh && \
+    echo '' >> /app/entrypoint.sh && \
+    echo '# Start Ollama server' >> /app/entrypoint.sh && \
+    echo 'echo "[+] Starting Ollama..."' >> /app/entrypoint.sh && \
+    echo 'ollama serve &' >> /app/entrypoint.sh && \
+    echo 'sleep 5' >> /app/entrypoint.sh && \
+    echo '' >> /app/entrypoint.sh && \
+    echo '# Set PYTHONPATH' >> /app/entrypoint.sh && \
+    echo 'export PYTHONPATH="$PYTHONPATH:/app/bridgy-main"' >> /app/entrypoint.sh && \
+    echo '' >> /app/entrypoint.sh && \
+    echo '# Start the application' >> /app/entrypoint.sh && \
+    echo 'echo "[+] Starting Bridgy application..."' >> /app/entrypoint.sh && \
+    echo 'cd /app/bridgy-main' >> /app/entrypoint.sh && \
+    echo 'python3 main.py --port=8443 --host=0.0.0.0' >> /app/entrypoint.sh && \
+    chmod +x /app/entrypoint.sh
 
 # Install Python packages globally
 RUN mkdir -p /app/bridgy-main && \

@@ -4,25 +4,42 @@ import sys
 from typing import List
 import tempfile
 import importlib.util
+import subprocess
 
 # Configure logging first to capture any issues
 logging.basicConfig(level=logging.DEBUG)
 logger = logging.getLogger(__name__)
 
-# Verify pypdf is installed before importing PyPDFLoader
-try:
-    import pypdf
-    logger.info("pypdf successfully imported")
-except ImportError as e:
-    logger.error(f"Error importing pypdf: {e}")
-    # Try to install pypdf if missing
+def ensure_package_installed(package_name):
+    """Ensure that a package is installed and importable"""
     try:
-        logger.warning("Attempting to install pypdf package...")
-        import subprocess
-        subprocess.check_call([sys.executable, "-m", "pip", "install", "pypdf"])
-        logger.info("pypdf installed successfully")
-    except Exception as install_error:
-        logger.error(f"Failed to install pypdf: {install_error}")
+        # Try to import the package
+        __import__(package_name)
+        logger.info(f"{package_name} successfully imported")
+        return True
+    except ImportError as e:
+        logger.error(f"Error importing {package_name}: {e}")
+        # Try to install the package if missing
+        try:
+            logger.warning(f"Attempting to install {package_name} package...")
+            subprocess.check_call([sys.executable, "-m", "pip", "install", package_name])
+            logger.info(f"{package_name} installed successfully")
+            # Try to import again after installation
+            try:
+                __import__(package_name)
+                logger.info(f"{package_name} successfully imported after installation")
+                return True
+            except ImportError:
+                logger.error(f"Still unable to import {package_name} after installation")
+                return False
+        except Exception as install_error:
+            logger.error(f"Failed to install {package_name}: {install_error}")
+            return False
+
+# Ensure required packages are installed
+pypdf_installed = ensure_package_installed('pypdf')
+faiss_installed = ensure_package_installed('faiss')
+st_installed = ensure_package_installed('sentence_transformers')
 
 # Now import required modules
 from langchain.text_splitter import RecursiveCharacterTextSplitter
