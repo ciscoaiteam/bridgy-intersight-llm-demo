@@ -1,17 +1,39 @@
 import os
 import logging
+import sys
 from typing import List
 import tempfile
-from langchain.text_splitter import RecursiveCharacterTextSplitter
-from langchain_community.document_loaders import PyPDFLoader
-from langchain_community.vectorstores import FAISS
-# from langchain.embeddings import HuggingFaceEmbeddings  # Updated to use local embeddings
-# from langchain_huggingface import HuggingFaceEmbeddings # Updated to use local embeddings
-from langchain_community.embeddings import HuggingFaceEmbeddings
+import importlib.util
 
-# Configure logging
+# Configure logging first to capture any issues
 logging.basicConfig(level=logging.DEBUG)
 logger = logging.getLogger(__name__)
+
+# Verify pypdf is installed before importing PyPDFLoader
+try:
+    import pypdf
+    logger.info("pypdf successfully imported")
+except ImportError as e:
+    logger.error(f"Error importing pypdf: {e}")
+    # Try to install pypdf if missing
+    try:
+        logger.warning("Attempting to install pypdf package...")
+        import subprocess
+        subprocess.check_call([sys.executable, "-m", "pip", "install", "pypdf"])
+        logger.info("pypdf installed successfully")
+    except Exception as install_error:
+        logger.error(f"Failed to install pypdf: {install_error}")
+
+# Now import required modules
+from langchain.text_splitter import RecursiveCharacterTextSplitter
+try:
+    from langchain_community.document_loaders import PyPDFLoader
+    from langchain_community.vectorstores import FAISS
+    from langchain_community.embeddings import HuggingFaceEmbeddings
+except ImportError as e:
+    logger.error(f"Error importing required modules: {e}")
+
+# Logger is already configured above
 
 class PDFLoader:
     def __init__(self, pdf_dir="pdf"):

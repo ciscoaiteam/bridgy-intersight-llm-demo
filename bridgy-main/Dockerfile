@@ -1,8 +1,9 @@
 FROM --platform=linux/amd64 ubuntu:22.04
 
 ENV DEBIAN_FRONTEND=noninteractive
-# Set Ollama home directory to a location that will be writable in OpenShift
 ENV OLLAMA_HOME=/app/.ollama
+ENV MONGODB_URL="mongodb://localhost:27017"
+ENV MONGODB_DB="bridgy_db"
 
 # Configure apt to use IPv4 only
 RUN echo 'Acquire::ForceIPv4 "true";' > /etc/apt/apt.conf.d/99force-ipv4
@@ -16,6 +17,7 @@ RUN apt-get update && apt-get install -y \
     python3.10 python3.10-venv python3.10-dev python3-pip \
     wget curl gnupg2 build-essential \
     ca-certificates software-properties-common \
+    mongodb \
     && rm -rf /var/lib/apt/lists/*
 
 # Always install CUDA toolkit for NVIDIA GPU support
@@ -72,16 +74,20 @@ RUN echo 'python main.py --port=8443 --host=0.0.0.0' >> /app/entrypoint.sh
 
 RUN chmod +x /app/entrypoint.sh
 
-# Set up Python environment
-RUN python3.10 -m venv /app/bridgy-main/venv && \
-    chmod -R +x /app/bridgy-main/venv/bin && \
-    /app/bridgy-main/venv/bin/python -m pip install --upgrade pip && \
-    echo "Installing requirements from requirements.txt..." && \
-    /app/bridgy-main/venv/bin/python -m pip install -r /app/bridgy-main/requirements.txt && \
-    echo "Verifying critical packages..." && \
-    /app/bridgy-main/venv/bin/python -m pip install pypdf sentence-transformers faiss-gpu --no-deps && \
-    /app/bridgy-main/venv/bin/python -c "import pypdf; print('pypdf successfully imported')" && \
-    /app/bridgy-main/venv/bin/python -c "import sentence_transformers; print('sentence_transformers successfully imported')" && \
-    /app/bridgy-main/venv/bin/python -c "import faiss; print('faiss successfully imported')"
+# Install Python packages globally
+RUN mkdir -p /app/bridgy-main && \
+    cd /app/bridgy-main && \
+    python3 -m pip install --no-cache-dir --upgrade pip setuptools wheel && \
+    python3 -m pip install --no-cache-dir -r requirements.txt && \
+    # Add motor and pymongo for MongoDB
+    python3 -m pip install --no-cache-dir motor pymongo && \
+    # Make sure pypdf is explicitly installed
+    python3 -m pip install --no-cache-dir pypdf && \
+    # Verify critical packages are installed and importable
+    python3 -c "import pypdf; print('pypdf installed successfully')" && \
+    python3 -c "import sentence_transformers; print('sentence_transformers installed successfully')" && \
+    python3 -c "import faiss; print('faiss-gpu installed successfully')" && \
+    python3 -c "import motor; print('motor installed successfully')" && \
+    python3 -c "import pymongo; print('pymongo installed successfully')"
 
 EXPOSE 8443
