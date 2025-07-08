@@ -25,9 +25,13 @@ RUN apt-get update && \
     wget -qO - https://www.mongodb.org/static/pgp/server-7.0.asc | apt-key add - && \
     echo "deb [ arch=amd64,arm64 ] https://repo.mongodb.org/apt/ubuntu jammy/mongodb-org/7.0 multiverse" | tee /etc/apt/sources.list.d/mongodb-org-7.0.list && \
     apt-get update && \
-    apt-get install -y mongodb-org && \
+    apt-get install -y mongodb-org mongodb-org-server mongodb-org-shell mongodb-org-tools && \
     mkdir -p /data/db && \
-    rm -rf /var/lib/apt/lists/*
+    chmod -R 777 /data/db && \
+    rm -rf /var/lib/apt/lists/* && \
+    # Test MongoDB installation
+    echo "Verifying MongoDB installation..." && \
+    mongod --version
 
 # Always install CUDA toolkit for NVIDIA GPU support
 RUN apt-get update && \
@@ -73,13 +77,35 @@ RUN echo '#!/bin/bash' > /app/entrypoint.sh && \
     echo 'chmod -R 777 /app' >> /app/entrypoint.sh && \
     echo 'chmod -R 777 $OLLAMA_HOME' >> /app/entrypoint.sh && \
     echo '' >> /app/entrypoint.sh && \
-    echo '# Start MongoDB service' >> /app/entrypoint.sh && \
+    echo '# Start MongoDB service with proper configuration' >> /app/entrypoint.sh && \
     echo 'echo "[+] Starting MongoDB service..."' >> /app/entrypoint.sh && \
     echo 'mkdir -p /data/db' >> /app/entrypoint.sh && \
-    echo 'chmod 777 /data/db' >> /app/entrypoint.sh && \
-    echo 'nohup mongod --bind_ip 127.0.0.1 --port 27017 &' >> /app/entrypoint.sh && \
-    echo 'echo "MongoDB started, waiting 5 seconds..."' >> /app/entrypoint.sh && \
-    echo 'sleep 5' >> /app/entrypoint.sh && \
+    echo 'chmod -R 777 /data/db' >> /app/entrypoint.sh && \
+    echo 'nohup mongod --bind_ip_all --port 27017 &' >> /app/entrypoint.sh && \
+    echo 'MONGO_PID=$!' >> /app/entrypoint.sh && \
+    echo 'echo "MongoDB started with PID $MONGO_PID, waiting for it to be ready..."' >> /app/entrypoint.sh && \
+    echo '' >> /app/entrypoint.sh && \
+    echo '# Wait for MongoDB to be ready' >> /app/entrypoint.sh && \
+    echo 'MAX_TRIES=30' >> /app/entrypoint.sh && \
+    echo 'TRIES=0' >> /app/entrypoint.sh && \
+    echo 'echo "Waiting for MongoDB to accept connections..."' >> /app/entrypoint.sh && \
+    echo 'while [ $TRIES -lt $MAX_TRIES ]; do' >> /app/entrypoint.sh && \
+    echo '  if mongo --eval "db.version()" &> /dev/null; then' >> /app/entrypoint.sh && \
+    echo '    echo "MongoDB is ready!"' >> /app/entrypoint.sh && \
+    echo '    break' >> /app/entrypoint.sh && \
+    echo '  fi' >> /app/entrypoint.sh && \
+    echo '  echo "Attempt $((TRIES+1))/$MAX_TRIES: MongoDB not ready yet, waiting..."' >> /app/entrypoint.sh && \
+    echo '  sleep 2' >> /app/entrypoint.sh && \
+    echo '  TRIES=$((TRIES+1))' >> /app/entrypoint.sh && \
+    echo 'done' >> /app/entrypoint.sh && \
+    echo '' >> /app/entrypoint.sh && \
+    echo 'if [ $TRIES -eq $MAX_TRIES ]; then' >> /app/entrypoint.sh && \
+    echo '  echo "ERROR: MongoDB failed to start after $MAX_TRIES attempts"' >> /app/entrypoint.sh && \
+    echo '  ps aux | grep mongo' >> /app/entrypoint.sh && \
+    echo '  ls -la /data/db' >> /app/entrypoint.sh && \
+    echo 'else' >> /app/entrypoint.sh && \
+    echo '  echo "MongoDB is running and accepting connections"' >> /app/entrypoint.sh && \
+    echo 'fi' >> /app/entrypoint.sh && \
     echo '' >> /app/entrypoint.sh && \
     echo '# Start Ollama server' >> /app/entrypoint.sh && \
     echo 'echo "[+] Starting Ollama..."' >> /app/entrypoint.sh && \
