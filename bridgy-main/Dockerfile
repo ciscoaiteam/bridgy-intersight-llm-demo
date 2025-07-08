@@ -121,17 +121,30 @@ RUN echo '#!/bin/bash' > /app/entrypoint.sh && \
     echo 'python3 main.py --port=8443 --host=0.0.0.0' >> /app/entrypoint.sh && \
     chmod +x /app/entrypoint.sh
 
-# Install Python packages globally with better conflict handling
+# Install Python packages globally with fixed dependency chain
 RUN mkdir -p /app/bridgy-main && \
     cd /app/bridgy-main && \
-    # Use --ignore-installed to avoid conflicts with system packages
-    python3 -m pip install --no-cache-dir --ignore-installed pip setuptools wheel && \
-    # Install critical packages separately first
-    python3 -m pip install --no-cache-dir --ignore-installed pypdf sentence-transformers faiss-gpu motor pymongo && \
-    # Then install the rest of the requirements
-    python3 -m pip install --no-cache-dir --ignore-installed --no-deps -r requirements.txt || true && \
+    # First update pip and essential tools
+    python3 -m pip install --no-cache-dir --upgrade pip setuptools wheel && \
+    # Install scientific stack with compatible versions
+    python3 -m pip install --no-cache-dir 'numpy<2.0.0,>=1.20.0' && \
+    python3 -m pip install --no-cache-dir 'scipy<1.11.0,>=1.10.0' && \
+    python3 -m pip install --no-cache-dir 'scikit-learn<1.3.0,>=1.2.0' && \
+    # Install MongoDB packages
+    python3 -m pip install --no-cache-dir motor pymongo && \
+    # Install PDF handling separately
+    python3 -m pip install --no-cache-dir pypdf && \
+    # Install sentence transformers after its dependencies are in place
+    python3 -m pip install --no-cache-dir 'sentence-transformers<3.0.0,>=2.2.0' && \
+    # Install FAISS GPU
+    python3 -m pip install --no-cache-dir faiss-gpu && \
+    # Then install the rest of the requirements 
+    python3 -m pip install --no-cache-dir --no-dependencies -r requirements.txt || true && \
     # Verify critical packages are installed and importable
     echo "Verifying critical packages..." && \
+    python3 -c "import numpy; print('numpy version:', numpy.__version__)" && \
+    python3 -c "import scipy; print('scipy version:', scipy.__version__)" && \
+    python3 -c "import sklearn; print('scikit-learn version:', sklearn.__version__)" && \
     python3 -c "import pypdf; print('pypdf version:', pypdf.__version__)" && \
     python3 -c "import motor; print('motor version:', motor.version)" && \
     python3 -c "import pymongo; print('pymongo version:', pymongo.version)"
