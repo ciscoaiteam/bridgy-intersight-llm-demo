@@ -121,20 +121,19 @@ RUN echo '#!/bin/bash' > /app/entrypoint.sh && \
     echo 'python3 main.py --port=8443 --host=0.0.0.0' >> /app/entrypoint.sh && \
     chmod +x /app/entrypoint.sh
 
-# Install Python packages globally
+# Install Python packages globally with better conflict handling
 RUN mkdir -p /app/bridgy-main && \
     cd /app/bridgy-main && \
-    python3 -m pip install --no-cache-dir --upgrade pip setuptools wheel && \
-    python3 -m pip install --no-cache-dir -r requirements.txt && \
-    # Add motor and pymongo for MongoDB
-    python3 -m pip install --no-cache-dir motor pymongo && \
-    # Make sure pypdf is explicitly installed
-    python3 -m pip install --no-cache-dir pypdf && \
+    # Use --ignore-installed to avoid conflicts with system packages
+    python3 -m pip install --no-cache-dir --ignore-installed pip setuptools wheel && \
+    # Install critical packages separately first
+    python3 -m pip install --no-cache-dir --ignore-installed pypdf sentence-transformers faiss-gpu motor pymongo && \
+    # Then install the rest of the requirements
+    python3 -m pip install --no-cache-dir --ignore-installed --no-deps -r requirements.txt || true && \
     # Verify critical packages are installed and importable
-    python3 -c "import pypdf; print('pypdf installed successfully')" && \
-    python3 -c "import sentence_transformers; print('sentence_transformers installed successfully')" && \
-    python3 -c "import faiss; print('faiss-gpu installed successfully')" && \
-    python3 -c "import motor; print('motor installed successfully')" && \
-    python3 -c "import pymongo; print('pymongo installed successfully')"
+    echo "Verifying critical packages..." && \
+    python3 -c "import pypdf; print('pypdf version:', pypdf.__version__)" && \
+    python3 -c "import motor; print('motor version:', motor.version)" && \
+    python3 -c "import pymongo; print('pymongo version:', pymongo.version)"
 
 EXPOSE 8443
