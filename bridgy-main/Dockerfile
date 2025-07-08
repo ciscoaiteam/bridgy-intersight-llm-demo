@@ -149,4 +149,5 @@ RUN mkdir -p /app/bridgy-main && \
     python3 -c "import motor; print('motor version:', motor.version)" && \
     python3 -c "import pymongo; print('pymongo version:', pymongo.version)"
 
+# SSL support is handled by OpenShift secrets mounted at runtime
 EXPOSE 8443
