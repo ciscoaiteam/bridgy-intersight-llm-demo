@@ -17,6 +17,7 @@ spec:
         app: mongodb
         name: mongodb
     spec:
+      serviceAccountName: mongodb
       containers:
       - capabilities: {}
         env:
