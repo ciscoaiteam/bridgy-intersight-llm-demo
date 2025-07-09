@@ -152,6 +152,21 @@ spec:
                 configMapKeyRef:
                   name: bridgy-main-env
                   key: NEXUS_DASHBOARD_DOMAIN
+            - name: MONGO_ENABLED
+              valueFrom:
+                configMapKeyRef:
+                  name: bridgy-main-env
+                  key: MONGO_ENABLED
+            - name: MONGODB_URL
+              valueFrom:
+                configMapKeyRef:
+                  name: bridgy-main-env
+                  key: MONGODB_URL
+            - name: MONGODB_DB
+              valueFrom:
+                configMapKeyRef:
+                  name: bridgy-main-env
+                  key: MONGODB_DB
           command: ["/bin/bash", "-c"]
           args:
             - |
@@ -177,6 +192,10 @@ spec:
               echo "NEXUS_DASHBOARD_USERNAME=${NEXUS_DASHBOARD_USERNAME}" >> /app/.env
               echo "NEXUS_DASHBOARD_PASSWORD=${NEXUS_DASHBOARD_PASSWORD}" >> /app/.env
               echo "NEXUS_DASHBOARD_DOMAIN=${NEXUS_DASHBOARD_DOMAIN}" >> /app/.env
+              # MongoDB Configuration
+              echo "MONGO_ENABLED=${MONGO_ENABLED}" >> /app/.env
+              echo "MONGODB_URL=${MONGODB_URL}" >> /app/.env
+              echo "MONGODB_DB=${MONGODB_DB}" >> /app/.env
               
               echo "[+] Skipping Ollama - using remote LLM service"
               

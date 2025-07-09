@@ -27,5 +27,5 @@ data:
   
   # MongoDB Configuration
   MONGO_ENABLED: "true"
-  MONGODB_URL: "mongodb://bridgy:bridgy123@mongodb:27017/bridgy_db"
+  MONGODB_URL: "mongodb://bridgy:bridgy123@mongodb:27017/bridgy_db?authSource=admin"
   MONGODB_DB: "bridgy_db"
