@@ -24,3 +24,8 @@ data:
   NEXUS_DASHBOARD_USERNAME: "your_username"
   NEXUS_DASHBOARD_PASSWORD: "your_password"
   NEXUS_DASHBOARD_DOMAIN: "your_domain"
+  
+  # MongoDB Configuration
+  MONGO_ENABLED: "true"
+  MONGODB_URL: "mongodb://bridgy:bridgy123@mongodb:27017/bridgy_db"
+  MONGODB_DB: "bridgy_db"

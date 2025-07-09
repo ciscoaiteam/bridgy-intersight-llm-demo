@@ -97,8 +97,18 @@ oc apply -f "$OUTPUT_FILE"
 echo "Secret '$SECRET_NAME' created/updated successfully!"
 echo ""
 
-# Apply all configuration files
-echo "Applying all configuration files in osdeploy/..."
+# Apply MongoDB resources first
+echo "Applying MongoDB resources..."
+oc apply -f "$(dirname "$0")/mongodb-data-persistentvolumeclaim.yaml"
+oc apply -f "$(dirname "$0")/mongodb-deploymentconfig.yaml"
+oc apply -f "$(dirname "$0")/mongodb-service.yaml"
+
+# Wait for MongoDB to start
+echo "Waiting for MongoDB to start..."
+oc rollout status dc/mongodb --timeout=180s
+
+# Apply all remaining configuration files
+echo "Applying all remaining configuration files in osdeploy/..."
 oc apply -f "$(dirname "$0")/"
 
 # Clean up any failed builds
