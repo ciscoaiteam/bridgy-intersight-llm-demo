@@ -70,12 +70,3 @@ spec:
           claimName: mongodb-data
   triggers:
   - type: ConfigChange
-  - imageChangeParams:
-      automatic: true
-      containerNames:
-      - mongodb
-      from:
-        kind: ImageStreamTag
-        name: mongodb:3.6
-        namespace: openshift
-    type: ImageChange
