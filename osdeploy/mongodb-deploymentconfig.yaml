@@ -1,5 +1,5 @@
-apiVersion: apps.openshift.io/v1
-kind: DeploymentConfig
+apiVersion: apps/v1
+kind: Deployment
 metadata:
   labels:
     app: mongodb
@@ -7,7 +7,8 @@ metadata:
 spec:
   replicas: 1
   selector:
-    app: mongodb
+    matchLabels:
+      app: mongodb
   strategy:
     type: Recreate
   template:
@@ -15,33 +16,43 @@ spec:
       labels:
         app: mongodb
     spec:
-      containers:
-        - name: mongodb
-          image: registry.redhat.io/rhscl/mongodb-36-rhel7:latest
-          ports:
-            - containerPort: 27017
-          env:
-            - name: MONGODB_USER
-              value: bridgy
-            - name: MONGODB_PASSWORD
-              value: bridgy123
-            - name: MONGODB_DATABASE
-              value: bridgy_db
-            - name: MONGODB_ADMIN_PASSWORD
-              value: admin123
-          resources:
-            limits:
-              memory: 512Mi
-              cpu: 300m
-            requests:
-              memory: 256Mi
-              cpu: 100m
-          volumeMounts:
-            - mountPath: /var/lib/mongodb/data
-              name: mongodb-data
-      volumes:
+      # Add init container to set up permissions
+      initContainers:
+      - name: init-mongodb-data
+        image: busybox
+        command: ['/bin/sh', '-c', 'chmod -R 777 /data/db && chown -R 1001:1001 /data/db']
+        volumeMounts:
         - name: mongodb-data
-          persistentVolumeClaim:
-            claimName: mongodb-data
-  triggers:
-    - type: ConfigChange
+          mountPath: /data/db
+        securityContext:
+          runAsUser: 0
+      containers:
+      - name: mongodb
+        image: mongo:4.4
+        ports:
+        - containerPort: 27017
+        env:
+        - name: MONGO_INITDB_ROOT_USERNAME
+          value: "bridgy"
+        - name: MONGO_INITDB_ROOT_PASSWORD
+          value: "bridgy123"
+        - name: MONGO_INITDB_DATABASE
+          value: "bridgy_db"
+        resources:
+          limits:
+            memory: 512Mi
+            cpu: 300m
+          requests:
+            memory: 256Mi
+            cpu: 100m
+        args: ["--auth"]
+        volumeMounts:
+        - mountPath: /data/db
+          name: mongodb-data
+      # This is important to allow running as user 1001
+      securityContext:
+        fsGroup: 1001
+      volumes:
+      - name: mongodb-data
+        persistentVolumeClaim:
+          claimName: mongodb-data
