@@ -1,43 +1,53 @@
-apiVersion: apps/v1
-kind: Deployment
+apiVersion: apps.openshift.io/v1
+kind: DeploymentConfig
 metadata:
   labels:
     app: mongodb
+    template: mongodb-persistent-template
   name: mongodb
 spec:
   replicas: 1
   selector:
-    matchLabels:
-      app: mongodb
+    name: mongodb
   strategy:
     type: Recreate
   template:
     metadata:
       labels:
         app: mongodb
+        name: mongodb
     spec:
-      # Add init container to set up permissions
-      initContainers:
-      - name: init-mongodb-data
-        image: busybox
-        command: ['/bin/sh', '-c', 'chmod -R 777 /data/db && chown -R 1001:1001 /data/db']
-        volumeMounts:
-        - name: mongodb-data
-          mountPath: /data/db
-        securityContext:
-          runAsUser: 0
       containers:
-      - name: mongodb
-        image: mongo:4.4
+      - capabilities: {}
+        env:
+        - name: MONGODB_USER
+          value: bridgy
+        - name: MONGODB_PASSWORD
+          value: bridgy123
+        - name: MONGODB_ADMIN_PASSWORD
+          value: admin123
+        - name: MONGODB_DATABASE
+          value: bridgy_db
+        image: registry.redhat.io/rhscl/mongodb-36-rhel7:latest
+        imagePullPolicy: IfNotPresent
+        livenessProbe:
+          initialDelaySeconds: 30
+          tcpSocket:
+            port: 27017
+          timeoutSeconds: 1
+        name: mongodb
         ports:
         - containerPort: 27017
-        env:
-        - name: MONGO_INITDB_ROOT_USERNAME
-          value: "bridgy"
-        - name: MONGO_INITDB_ROOT_PASSWORD
-          value: "bridgy123"
-        - name: MONGO_INITDB_DATABASE
-          value: "bridgy_db"
+          protocol: TCP
+        readinessProbe:
+          exec:
+            command:
+            - /bin/sh
+            - -i
+            - -c
+            - mongo 127.0.0.1:27017/$MONGODB_DATABASE -u $MONGODB_USER -p $MONGODB_PASSWORD --eval="quit()"
+          initialDelaySeconds: 3
+          timeoutSeconds: 1
         resources:
           limits:
             memory: 512Mi
@@ -45,14 +55,27 @@ spec:
           requests:
             memory: 256Mi
             cpu: 100m
-        args: ["--auth"]
+        securityContext:
+          capabilities: {}
+          privileged: false
+        terminationMessagePath: /dev/termination-log
         volumeMounts:
-        - mountPath: /data/db
+        - mountPath: /var/lib/mongodb/data
           name: mongodb-data
-      # This is important to allow running as user 1001
-      securityContext:
-        fsGroup: 1001
+      dnsPolicy: ClusterFirst
+      restartPolicy: Always
       volumes:
       - name: mongodb-data
         persistentVolumeClaim:
           claimName: mongodb-data
+  triggers:
+  - type: ConfigChange
+  - imageChangeParams:
+      automatic: true
+      containerNames:
+      - mongodb
+      from:
+        kind: ImageStreamTag
+        name: mongodb:3.6
+        namespace: openshift
+    type: ImageChange
