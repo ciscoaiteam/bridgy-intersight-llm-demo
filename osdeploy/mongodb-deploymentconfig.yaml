@@ -1,54 +1,35 @@
-apiVersion: apps.openshift.io/v1
-kind: DeploymentConfig
+apiVersion: apps/v1
+kind: Deployment
 metadata:
   labels:
     app: mongodb
-    template: mongodb-persistent-template
   name: mongodb
 spec:
   replicas: 1
   selector:
-    name: mongodb
+    matchLabels:
+      app: mongodb
   strategy:
     type: Recreate
   template:
     metadata:
       labels:
         app: mongodb
-        name: mongodb
     spec:
       serviceAccountName: mongodb
       containers:
-      - capabilities: {}
-        env:
-        - name: MONGODB_USER
-          value: bridgy
-        - name: MONGODB_PASSWORD
-          value: bridgy123
-        - name: MONGODB_ADMIN_PASSWORD
-          value: admin123
-        - name: MONGODB_DATABASE
-          value: bridgy_db
-        image: registry.redhat.io/rhscl/mongodb-36-rhel7:latest
-        imagePullPolicy: IfNotPresent
-        livenessProbe:
-          initialDelaySeconds: 30
-          tcpSocket:
-            port: 27017
-          timeoutSeconds: 1
-        name: mongodb
+      - name: mongodb
+        image: mongo:4.4
         ports:
         - containerPort: 27017
-          protocol: TCP
-        readinessProbe:
-          exec:
-            command:
-            - /bin/sh
-            - -i
-            - -c
-            - mongo 127.0.0.1:27017/$MONGODB_DATABASE -u $MONGODB_USER -p $MONGODB_PASSWORD --eval="quit()"
-          initialDelaySeconds: 3
-          timeoutSeconds: 1
+        command: ["mongod", "--config", "/etc/mongo/mongod.conf"]
+        env:
+        - name: MONGO_INITDB_ROOT_USERNAME
+          value: "bridgy"
+        - name: MONGO_INITDB_ROOT_PASSWORD
+          value: "bridgy123"
+        - name: MONGO_INITDB_DATABASE
+          value: "bridgy_db"
         resources:
           limits:
             memory: 512Mi
@@ -56,18 +37,18 @@ spec:
           requests:
             memory: 256Mi
             cpu: 100m
-        securityContext:
-          capabilities: {}
-          privileged: false
-        terminationMessagePath: /dev/termination-log
         volumeMounts:
-        - mountPath: /var/lib/mongodb/data
-          name: mongodb-data
-      dnsPolicy: ClusterFirst
-      restartPolicy: Always
+        - name: mongodb-data
+          mountPath: /data/db
+        - name: mongodb-config
+          mountPath: /etc/mongo
+        - name: mongodb-log
+          mountPath: /var/log/mongodb
       volumes:
       - name: mongodb-data
-        persistentVolumeClaim:
-          claimName: mongodb-data
-  triggers:
-  - type: ConfigChange
+        emptyDir: {}
+      - name: mongodb-log
+        emptyDir: {}
+      - name: mongodb-config
+        configMap:
+          name: mongodb-config
