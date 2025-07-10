@@ -30,6 +30,8 @@ spec:
           value: "bridgy123"
         - name: MONGO_INITDB_DATABASE
           value: "bridgy_db"
+        - name: MONGO_INITDB_AUTH_MECHANISM
+          value: "SCRAM-SHA-1"
         resources:
           limits:
             memory: 512Mi
