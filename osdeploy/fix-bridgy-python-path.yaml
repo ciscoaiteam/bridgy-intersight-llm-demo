@@ -1,0 +1,66 @@
+apiVersion: apps.openshift.io/v1
+kind: DeploymentConfig
+metadata:
+  name: bridgy-main
+spec:
+  template:
+    spec:
+      containers:
+        - name: bridgy-main
+          env:
+            - name: PYTHONPATH
+              value: /app:/app/bridgy-main
+          command:
+            - /bin/bash
+            - -c
+            - |
+              set -e
+              
+              # Install required Python packages
+              pip3 install -r /app/bridgy-main/requirements.txt
+              
+              # Install Intersight SDK
+              echo "Installing Intersight SDK..."
+              pip3 install intersight
+
+              # Create the tools directory structure with proper Python package structure
+              mkdir -p /app/tools
+              cp -f /mnt/tools/pdf_loader.py /app/tools/
+              cp -f /mnt/tools-init/__init__.py /app/tools/
+              
+              # Make tools directory discoverable as a Python package
+              touch /app/__init__.py
+              touch /app/bridgy-main/__init__.py
+              
+              # List directory structure for debugging
+              echo "[+] Launching main.py with port 8443"
+              ls -la /app
+              
+              # Print environment variables for debugging
+              echo "PYTHONPATH=$PYTHONPATH"
+              
+              # Load environment variables
+              if [ -f /app/.env ]; then
+                export $(grep -v '^#' /app/.env | xargs)
+                echo "[INFO] Successfully loaded .env from /app/.env"
+              else
+                echo "[WARNING] No .env file found at /app/.env"
+              fi
+
+              # Run the main application with specified parameters
+              cd /app/bridgy-main
+              python3 main.py --port=8443 --host=0.0.0.0
+          volumeMounts:
+            - name: bridgy-tools
+              mountPath: /mnt/tools
+            - name: bridgy-tools-init
+              mountPath: /mnt/tools-init
+      volumes:
+        - name: bridgy-tools
+          configMap:
+            name: bridgy-main-tools
+            defaultMode: 0755
+        - name: bridgy-tools-init
+          configMap:
+            name: bridgy-main-tools-init
+            defaultMode: 0755

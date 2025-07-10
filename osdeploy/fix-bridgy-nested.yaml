@@ -1,0 +1,113 @@
+apiVersion: apps.openshift.io/v1
+kind: DeploymentConfig
+metadata:
+  name: bridgy-main
+spec:
+  template:
+    spec:
+      containers:
+        - name: bridgy-main
+          env:
+            - name: PYTHONPATH
+              value: /app
+          command:
+            - /bin/bash
+            - -c
+            - |
+              set -e
+              
+              echo "[+] Setting up application structure"
+              mkdir -p /tmp/pip /tmp/pip-cache
+              
+              # Check if files are nested in /app/bridgy-main/bridgy-main
+              if [ -d "/app/bridgy-main/bridgy-main" ]; then
+                echo "[+] Found nested directory structure - fixing..."
+                # Move nested files up one level
+                cp -r /app/bridgy-main/bridgy-main/* /app/bridgy-main/
+                # Clean up nested directory to avoid confusion
+                rm -rf /app/bridgy-main/bridgy-main
+              fi
+              
+              # Create directory structure
+              mkdir -p /app/tools
+              
+              # Create tools directory and Python package structure
+              echo "[+] Setting up tools directory"
+              if [ ! -f "/app/tools/pdf_loader.py" ]; then
+                cp -f /mnt/tools/pdf_loader.py /app/tools/ || echo "Failed to copy pdf_loader.py"
+              fi
+              
+              if [ ! -f "/app/tools/__init__.py" ]; then
+                cp -f /mnt/tools-init/__init__.py /app/tools/ || echo "Failed to copy __init__.py"
+              fi
+              
+              touch /app/__init__.py
+              
+              # List directory structure for debugging
+              echo "[+] Directory structure:"
+              find /app -type f -name "*.py" | sort
+              
+              echo "[+] Installing Python dependencies"
+              if [ -f "/app/bridgy-main/requirements.txt" ]; then
+                pip3 install -r /app/bridgy-main/requirements.txt
+              else
+                echo "[!] requirements.txt not found"
+                exit 1
+              fi
+              
+              # Install Intersight SDK
+              echo "[+] Installing Intersight SDK"
+              pip3 install intersight
+              
+              # Create .env file from environment variables
+              echo "[+] Creating .env file from environment variables"
+              touch /app/.env
+              # LLM Service Configuration
+              echo "LLM_BASE_URL=http://64.101.169.102:8000/v1" >> /app/.env
+              echo "LLM_MODEL=/ai/models/Meta-Llama-3-8B-Instruct/" >> /app/.env
+              echo "LLM_API_KEY=llm-api-key" >> /app/.env
+              # LangSmith Configuration
+              echo "LANGSMITH_ENDPOINT=${LANGSMITH_ENDPOINT}" >> /app/.env
+              echo "LANGSMITH_API_KEY=${LANGSMITH_API_KEY}" >> /app/.env
+              echo "LANGSMITH_PROJECT=${LANGSMITH_PROJECT}" >> /app/.env
+              # Intersight Configuration
+              echo "INTERSIGHT_API_KEY=${INTERSIGHT_API_KEY}" >> /app/.env
+              echo "INTERSIGHT_SECRET_KEY_PATH=${INTERSIGHT_SECRET_KEY_PATH}" >> /app/.env
+              # Nexus Dashboard Configuration
+              echo "NEXUS_DASHBOARD_URL=${NEXUS_DASHBOARD_URL}" >> /app/.env
+              echo "NEXUS_DASHBOARD_USERNAME=${NEXUS_DASHBOARD_USERNAME}" >> /app/.env
+              echo "NEXUS_DASHBOARD_PASSWORD=${NEXUS_DASHBOARD_PASSWORD}" >> /app/.env
+              echo "NEXUS_DASHBOARD_DOMAIN=${NEXUS_DASHBOARD_DOMAIN}" >> /app/.env
+              # MongoDB Configuration
+              echo "MONGO_ENABLED=true" >> /app/.env
+              echo "MONGODB_URL=mongodb://bridgy:bridgy123@mongodb:27017/bridgy_db?authSource=admin" >> /app/.env
+              echo "MONGODB_DB=bridgy_db" >> /app/.env
+              
+              # Print PYTHONPATH for debugging
+              echo "[+] PYTHONPATH=$PYTHONPATH"
+              
+              if [ -f /app/.env ]; then
+                export $(grep -v '^#' /app/.env | xargs)
+                echo "[INFO] Successfully loaded .env from /app/.env"
+              else
+                echo "[WARNING] No .env file found at /app/.env"
+              fi
+              
+              # Run the application
+              echo "[+] Launching main.py with port 8443"
+              cd /app/bridgy-main
+              python3 main.py --port=8443 --host=0.0.0.0
+          volumeMounts:
+            - name: bridgy-tools
+              mountPath: /mnt/tools
+            - name: bridgy-tools-init
+              mountPath: /mnt/tools-init
+      volumes:
+        - name: bridgy-tools
+          configMap:
+            name: bridgy-main-tools
+            defaultMode: 0755
+        - name: bridgy-tools-init
+          configMap:
+            name: bridgy-main-tools-init
+            defaultMode: 0755
