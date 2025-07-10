@@ -44,6 +44,8 @@ spec:
           mountPath: /etc/mongo
         - name: mongodb-log
           mountPath: /var/log/mongodb
+        - name: mongodb-init-script
+          mountPath: /docker-entrypoint-initdb.d/
       volumes:
       - name: mongodb-data
         emptyDir: {}
@@ -52,3 +54,6 @@ spec:
       - name: mongodb-config
         configMap:
           name: mongodb-config
+      - name: mongodb-init-script
+        configMap:
+          name: mongodb-init-script
