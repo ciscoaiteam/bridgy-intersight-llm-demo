@@ -6,20 +6,25 @@ metadata:
     app: mongodb
 data:
   init-mongo.js: |
-    db = db.getSiblingDB('admin');
+    // This script will run automatically when MongoDB starts
+    // Create admin user that can create other users
+    print('Initializing MongoDB for Bridgy application...');
     
-    // Create the bridgy user with the correct password and roles
+    db = db.getSiblingDB('admin');
     db.createUser({
       user: 'bridgy',
       pwd: 'bridgy123',
       roles: [
-        { role: 'readWrite', db: 'bridgy_db' },
-        { role: 'dbAdmin', db: 'bridgy_db' }
+        { role: 'userAdminAnyDatabase', db: 'admin' },
+        { role: 'readWriteAnyDatabase', db: 'admin' },
+        { role: 'dbAdminAnyDatabase', db: 'admin' }
       ]
     });
     
+    // Create and initialize the bridgy_db database
     db = db.getSiblingDB('bridgy_db');
-    
-    // Create a test collection to verify database exists
     db.createCollection('sessions');
     db.sessions.insert({ name: 'initialization', status: 'completed', timestamp: new Date() });
+    
+    print('MongoDB initialization complete!');
+    
