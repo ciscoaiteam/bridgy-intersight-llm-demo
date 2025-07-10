@@ -1,0 +1,82 @@
+apiVersion: apps.openshift.io/v1
+kind: DeploymentConfig
+metadata:
+  name: bridgy-main
+spec:
+  template:
+    spec:
+      containers:
+      - name: bridgy-main
+        args:
+        - |
+          # Create writable directories in /tmp
+          mkdir -p /tmp/pip /tmp/pip-cache
+
+          echo "[+] Creating .env file from environment variables"
+          # Create .env file from environment variables
+          touch /app/.env
+          # LLM Service Configuration
+          echo "LLM_BASE_URL=http://64.101.169.102:8000/v1" >> /app/.env
+          echo "LLM_MODEL=/ai/models/Meta-Llama-3-8B-Instruct/" >> /app/.env
+          echo "LLM_API_KEY=llm-api-key" >> /app/.env
+          # LangSmith Configuration
+          echo "LANGSMITH_ENDPOINT=${LANGSMITH_ENDPOINT}" >> /app/.env
+          echo "LANGSMITH_API_KEY=${LANGSMITH_API_KEY}" >> /app/.env
+          echo "LANGSMITH_PROJECT=${LANGSMITH_PROJECT}" >> /app/.env
+          # Intersight Configuration
+          echo "INTERSIGHT_API_KEY=${INTERSIGHT_API_KEY}" >> /app/.env
+          echo "INTERSIGHT_SECRET_KEY_PATH=${INTERSIGHT_SECRET_KEY_PATH}" >> /app/.env
+          # Nexus Dashboard Configuration
+          echo "NEXUS_DASHBOARD_URL=${NEXUS_DASHBOARD_URL}" >> /app/.env
+          echo "NEXUS_DASHBOARD_USERNAME=${NEXUS_DASHBOARD_USERNAME}" >> /app/.env
+          echo "NEXUS_DASHBOARD_PASSWORD=${NEXUS_DASHBOARD_PASSWORD}" >> /app/.env
+          echo "NEXUS_DASHBOARD_DOMAIN=${NEXUS_DASHBOARD_DOMAIN}" >> /app/.env
+          # MongoDB Configuration
+          echo "MONGO_ENABLED=true" >> /app/.env
+          echo "MONGODB_URL=mongodb://bridgy:bridgy123@mongodb:27017/bridgy_db?authSource=admin" >> /app/.env
+          echo "MONGODB_DB=bridgy_db" >> /app/.env
+
+          echo "[+] Skipping Ollama - using remote LLM service"
+
+          echo "[+] Setting up Python environment..."
+          
+          # Make sure main.py is where we expect it
+          if [ ! -f /app/bridgy-main/main.py ]; then
+            echo "[!] main.py not found in /app/bridgy-main, checking other locations..."
+            find /app -name main.py -type f 2>/dev/null
+            # If found elsewhere, create directory and copy it
+            MAIN_PY=$(find /app -name main.py -type f 2>/dev/null | head -n 1)
+            if [ ! -z "$MAIN_PY" ]; then
+              echo "[+] Found main.py at $MAIN_PY"
+              mkdir -p /app/bridgy-main
+              cp -r $(dirname $MAIN_PY)/* /app/bridgy-main/
+            else
+              echo "[!] ERROR: main.py not found anywhere in /app"
+              # List contents to debug
+              echo "[DEBUG] Contents of /app:"
+              ls -la /app
+              exit 1
+            fi
+          fi
+
+          cd /app/bridgy-main
+
+          # Install required dependencies to user directory
+          echo "Installing FastAPI and dependencies..."
+          python3 -m pip install --user fastapi uvicorn pydantic motor python-dotenv
+
+          echo "Installing LangChain packages..."
+          python3 -m pip install --user langchain langchain_ollama langchain_openai langchain_community langsmith
+
+          echo "Installing Intersight SDK..."
+          python3 -m pip install --user intersight
+
+          # Python packages are now installed in the container image
+          # Add user packages to Python path
+          export PYTHONPATH=/tmp/pip/lib/python3.10/site-packages:$PYTHONPATH
+
+          echo "[+] Launching main.py with port 8443"
+          # List files in current directory to confirm main.py exists
+          ls -la
+          # Run with system Python instead of virtual environment
+          python3 main.py --port=8443 --host=0.0.0.0
