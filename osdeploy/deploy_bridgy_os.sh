@@ -256,6 +256,10 @@ fi
 echo "Applying Bridgy optimized configuration with separated MongoDB..."
 oc apply -f "$BRIDGY_CONFIG"
 
+# Apply the NodePort service with correct selector
+echo "Applying Bridgy NodePort service with correct selector..."
+oc apply -f "$(dirname "$0")/bridgy-main-nodeport-service.yaml"
+
 # Clean up any failed builds
 echo "Cleaning up any previous failed builds..."
 # Delete builds for bridgy-main
