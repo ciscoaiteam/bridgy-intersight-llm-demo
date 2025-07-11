@@ -1,0 +1,151 @@
+apiVersion: build.openshift.io/v1
+kind: BuildConfig
+metadata:
+  name: bridgy-main
+spec:
+  failedBuildsHistoryLimit: 5
+  successfulBuildsHistoryLimit: 5
+  runPolicy: Serial
+  source:
+    binary: {}
+    type: Binary
+  strategy:
+    type: Docker
+    dockerStrategy:
+      dockerfilePath: Dockerfile
+      from:
+        kind: DockerImage
+        name: ubuntu:22.04
+      forcePull: true
+      noCache: true
+      env:
+        - name: "DEBIAN_FRONTEND" 
+          value: "noninteractive"
+      dockerfile: |
+        FROM ubuntu:22.04
+
+        # Set environment variables to avoid interactive prompts during installation
+        ENV DEBIAN_FRONTEND=noninteractive
+        ENV PYTHONUNBUFFERED=1
+        ENV PYTHONPATH=/app:/app/bridgy-main:/tmp
+
+        # Install necessary packages
+        RUN apt-get update && \
+            apt-get install -y --no-install-recommends \
+            python3 \
+            python3-pip \
+            python3-dev \
+            wget \
+            gnupg2 \
+            curl \
+            ca-certificates \
+            git \
+            tzdata \
+            && rm -rf /var/lib/apt/lists/*
+
+        # Create application directories with proper permissions
+        RUN mkdir -p /app/bridgy-main /app/tools /tmp/tools
+
+        # Create Python package directories
+        WORKDIR /app
+        RUN touch /app/__init__.py
+        RUN touch /app/bridgy-main/__init__.py
+        RUN touch /app/tools/__init__.py
+        RUN touch /tmp/__init__.py
+        RUN touch /tmp/tools/__init__.py
+
+        # Copy application files
+        # First handle potential nested directory structure
+        COPY . /tmp/src/
+        # If the nested bridgy-main directory exists, use it as source
+        RUN if [ -d "/tmp/src/bridgy-main/bridgy-main" ]; then \
+                echo "Found nested directory structure. Copying from nested directory." && \
+                cp -r /tmp/src/bridgy-main/bridgy-main/* /app/bridgy-main/ && \
+                if [ -d "/tmp/src/bridgy-main/bridgy-main/tools" ]; then \
+                    cp -r /tmp/src/bridgy-main/bridgy-main/tools/* /app/tools/ && \
+                    cp -r /tmp/src/bridgy-main/bridgy-main/tools/* /tmp/tools/; \
+                fi; \
+            elif [ -d "/tmp/src/bridgy-main" ]; then \
+                echo "Found standard directory structure. Copying from bridgy-main directory." && \
+                cp -r /tmp/src/bridgy-main/* /app/bridgy-main/ && \
+                if [ -d "/tmp/src/bridgy-main/tools" ]; then \
+                    cp -r /tmp/src/bridgy-main/tools/* /app/tools/ && \
+                    cp -r /tmp/src/bridgy-main/tools/* /tmp/tools/; \
+                fi; \
+            else \
+                echo "Copying from root directory." && \
+                cp -r /tmp/src/* /app/bridgy-main/; \
+            fi
+
+        # Find and move tools directory content if it exists elsewhere
+        RUN if [ ! -f "/app/tools/pdf_loader.py" ] && [ -d "/tmp/src/tools" ]; then \
+                echo "Found tools in src root. Copying to /app/tools" && \
+                cp -r /tmp/src/tools/* /app/tools/ && \
+                cp -r /tmp/src/tools/* /tmp/tools/; \
+            fi
+
+        # Search for main.py and config.py and ensure they're in the proper places
+        RUN find /tmp/src -name "main.py" | xargs -I{} cp {} /app/bridgy-main/ || echo "main.py not found"
+        RUN find /tmp/src -name "config.py" | xargs -I{} cp {} /app/bridgy-main/config/ || mkdir -p /app/bridgy-main/config
+
+        # Find requirements.txt
+        RUN find /tmp/src -name "requirements.txt" -type f -exec cp {} /app/requirements.txt \; || echo "requirements.txt not found"
+
+        # If requirements.txt is not found, create a minimal one with essential packages
+        RUN if [ ! -f "/app/requirements.txt" ]; then \
+                echo "Creating minimal requirements.txt" && \
+                echo "fastapi==0.110.1\nuvicorn==0.29.0\npymongo==4.7.0\npython-dotenv==1.0.1\npydantic==2.6.4\nlangchain==0.3.26\nlangchain-community==0.3.27\nlangchain-openai==0.3.27\nlangchain-core==0.3.68\npypdf\nfaiss-cpu\nsentence-transformers\nintersight" > /app/requirements.txt; \
+            fi
+
+        # Install Python dependencies
+        RUN pip3 install --no-cache-dir -r /app/requirements.txt
+
+        # Create a startup script
+        RUN echo '#!/bin/bash\n\
+        set -e\n\
+        \n\
+        echo "[+] Setting up MongoDB connection"\n\
+        MONGODB_URL=${MONGODB_URL:-"mongodb://bridgy:bridgy123@mongodb:27017/bridgy_db?authSource=admin"}\n\
+        export MONGODB_URL\n\
+        \n\
+        echo "[+] Creating .env file from environment variables"\n\
+        cat > /app/bridgy-main/.env << EOF\n\
+        LLM_BASE_URL=http://64.101.169.102:8000/v1\n\
+        LLM_MODEL=/ai/models/Meta-Llama-3-8B-Instruct/\n\
+        LLM_API_KEY=llm-api-key\n\
+        LANGSMITH_ENDPOINT=${LANGSMITH_ENDPOINT}\n\
+        LANGSMITH_API_KEY=${LANGSMITH_API_KEY}\n\
+        LANGSMITH_PROJECT=${LANGSMITH_PROJECT}\n\
+        INTERSIGHT_API_KEY=${INTERSIGHT_API_KEY}\n\
+        INTERSIGHT_SECRET_KEY_PATH=${INTERSIGHT_SECRET_KEY_PATH}\n\
+        NEXUS_DASHBOARD_URL=${NEXUS_DASHBOARD_URL}\n\
+        NEXUS_DASHBOARD_USERNAME=${NEXUS_DASHBOARD_USERNAME}\n\
+        NEXUS_DASHBOARD_PASSWORD=${NEXUS_DASHBOARD_PASSWORD}\n\
+        NEXUS_DASHBOARD_DOMAIN=${NEXUS_DASHBOARD_DOMAIN}\n\
+        MONGO_ENABLED=true\n\
+        MONGODB_URL=${MONGODB_URL}\n\
+        MONGODB_DB=bridgy_db\n\
+        EOF\n\
+        \n\
+        echo "[+] Current directory structure:"\n\
+        find /app -type f -name "*.py" | sort\n\
+        \n\
+        echo "[+] Launching Bridgy AI Assistant"\n\
+        cd /app/bridgy-main\n\
+        python3 -c "import sys; print(\\"Python path:\\", sys.path)"\n\
+        echo "[+] Executing main.py"\n\
+        python3 main.py --port=8443 --host=0.0.0.0\n\
+        ' > /app/start.sh
+
+        # Make the startup script executable
+        RUN chmod +x /app/start.sh
+
+        # Set the working directory
+        WORKDIR /app
+
+        # Run the application
+        CMD ["/app/start.sh"]
+  output:
+    to:
+      kind: ImageStreamTag
+      name: bridgy-main:latest

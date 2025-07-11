@@ -1,0 +1,139 @@
+apiVersion: apps.openshift.io/v1
+kind: DeploymentConfig
+metadata:
+  name: bridgy-main
+  labels:
+    app: bridgy-main
+spec:
+  replicas: 1
+  selector:
+    app: bridgy-main
+  strategy:
+    type: Rolling
+    rollingParams:
+      timeoutSeconds: 600
+      maxSurge: "25%"
+      maxUnavailable: "25%"
+  template:
+    metadata:
+      labels:
+        app: bridgy-main
+    spec:
+      containers:
+      - name: bridgy-main
+        image: image-registry.openshift-image-registry.svc:5000/demo1/bridgy-main:latest
+        ports:
+        - containerPort: 8443
+          protocol: TCP
+        env:
+        - name: PYTHONPATH
+          value: "/app:/app/bridgy-main:/app/bridgy:/tmp"
+        # MongoDB connection parameters
+        - name: MONGODB_HOST
+          value: "mongodb"
+        - name: MONGODB_PORT
+          value: "27017"
+        - name: MONGODB_URI
+          value: "mongodb://bridgy:bridgy123@mongodb:27017/bridgy_db"
+        # LLM configuration
+        - name: LLM_SERVICE_URL
+          value: "http://64.101.169.102:8000/v1"
+        - name: LLM_MODEL
+          value: "/ai/models/Meta-Llama-3-8B-Instruct/"
+        - name: LLM_API_KEY
+          value: "llm-api-key"
+        # CUDA configuration
+        - name: CUDA_VISIBLE_DEVICES
+          value: "0"
+        # Nexus Dashboard integration
+        - name: NEXUS_DASHBOARD_URL
+          valueFrom:
+            secretKeyRef:
+              name: bridgy-secrets
+              key: nexus-dashboard-url
+              optional: true
+        - name: NEXUS_DASHBOARD_USERNAME
+          valueFrom:
+            secretKeyRef:
+              name: bridgy-secrets
+              key: nexus-dashboard-username
+              optional: true
+        - name: NEXUS_DASHBOARD_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: bridgy-secrets
+              key: nexus-dashboard-password
+              optional: true
+        # Intersight API integration
+        - name: INTERSIGHT_API_KEY
+          valueFrom:
+            secretKeyRef:
+              name: bridgy-secrets
+              key: intersight-api-key
+              optional: true
+        - name: INTERSIGHT_PRIVATE_KEY_FILE
+          value: "/app/bridgy-main/configs/intersight_api_key.pem"
+        # Langsmith configuration
+        - name: LANGSMITH_API_KEY
+          valueFrom:
+            secretKeyRef:
+              name: bridgy-secrets
+              key: langsmith-api-key
+              optional: true
+        - name: LANGCHAIN_PROJECT
+          value: "bridgy"
+        resources:
+          limits:
+            memory: 4Gi
+          requests:
+            memory: 2Gi
+        terminationMessagePath: /dev/termination-log
+        terminationMessagePolicy: File
+        imagePullPolicy: Always
+      restartPolicy: Always
+      terminationGracePeriodSeconds: 30
+      dnsPolicy: ClusterFirst
+      securityContext: {}
+      schedulerName: default-scheduler
+  triggers:
+  - type: ConfigChange
+  - type: ImageChange
+    imageChangeParams:
+      automatic: true
+      containerNames:
+      - bridgy-main
+      from:
+        kind: ImageStreamTag
+        namespace: demo1
+        name: bridgy-main:latest
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: bridgy-main
+  labels:
+    app: bridgy-main
+spec:
+  ports:
+  - port: 8443
+    targetPort: 8443
+    protocol: TCP
+  selector:
+    app: bridgy-main
+---
+apiVersion: route.openshift.io/v1
+kind: Route
+metadata:
+  name: bridgy-main
+  labels:
+    app: bridgy-main
+spec:
+  host: bridgy-main-demo1.apps.ocp.devnet
+  to:
+    kind: Service
+    name: bridgy-main
+  port:
+    targetPort: 8443
+  tls:
+    termination: edge
+    insecureEdgeTerminationPolicy: Redirect
