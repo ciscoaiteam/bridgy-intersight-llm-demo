@@ -15,6 +15,9 @@ RUN apt-get update && apt-get install -y \
     netcat-openbsd \
     wget
 
+# Install Ollama
+RUN curl -fsSL https://ollama.com/install.sh | sh
+
 # Set up CUDA environment without full installation
 # This is more compatible with OpenShift and avoids dependency issues
 RUN mkdir -p /usr/local/cuda/lib64 \
@@ -72,6 +75,9 @@ ENV PYTHONUNBUFFERED=1
 ENV MONGODB_HOST=mongodb
 ENV MONGODB_PORT=27017
 ENV MONGODB_URI=mongodb://mongodb:27017/bridgy
+ENV OLLAMA_HOME=/app/.ollama
+ENV OLLAMA_MODELS=/config/ollama
+ENV PATH="/root/.ollama/bin:${PATH}"
 
 # Set the initialization script as the entrypoint
 ENTRYPOINT ["/app/bridgy-main/optimized_init.sh"]

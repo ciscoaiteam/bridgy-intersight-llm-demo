@@ -85,11 +85,40 @@ wait_for_mongodb
 
 # MongoDB connection will be handled by packages from requirements.txt
 
-# 4. Run the import verification script
+# 4. Set up and start Ollama
+echo "[+] Setting up Ollama directory structure"
+mkdir -p $OLLAMA_HOME
+chmod -R 777 $OLLAMA_HOME
+
+# Ensure Ollama can write to the models directory
+mkdir -p /config/ollama
+chmod -R 777 /config/ollama
+
+# Start Ollama service
+echo "[+] Starting Ollama service"
+ollama serve &
+
+# Wait for Ollama to be ready
+echo "[+] Waiting for Ollama to be ready"
+MAX_RETRIES=30
+COUNT=0
+while ! curl -s http://localhost:11434/api/version &>/dev/null && [ $COUNT -lt $MAX_RETRIES ]; do
+    echo "  Waiting for Ollama service to start..."
+    sleep 2
+    COUNT=$((COUNT + 1))
+done
+
+if [ $COUNT -lt $MAX_RETRIES ]; then
+    echo "[+] Ollama is ready!"
+else
+    echo "[!] Warning: Ollama may not be ready, continuing anyway"
+fi
+
+# 5. Run the import verification script
 echo "[+] Verifying Python imports"
 python3 /app/bridgy-main/verify_imports.py
 
-# 5. Start the Bridgy AI Assistant
+# 6. Start the Bridgy AI Assistant
 echo "[+] Starting Bridgy AI Assistant"
 cd /app/bridgy-main
 
