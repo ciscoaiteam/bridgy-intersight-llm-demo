@@ -89,7 +89,7 @@ pydantic==2.10.6
 pydantic-settings==2.8.1
 pydantic_core==2.27.2
 pydeck==0.9.1
-pymongo==4.11.1
+# pymongo pinned to 4.5.0 above for compatibility with motor 2.5.1
 pypdf==5.4.0
 python-dateutil==2.9.0.post0
 python-dotenv==1.0.1
