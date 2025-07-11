@@ -10,11 +10,6 @@ try:
             # Create symlink from bridgy-main to bridgy_main
             os.symlink("/app/bridgy-main", "/app/bridgy_main")
             print("✅ Created bridgy_main module symlink")
-            
-            # Create __init__.py to make it a proper package
-            with open("/app/bridgy_main/__init__.py", "w") as f:
-                f.write("# Generated package file\n")
-            print("✅ Created bridgy_main/__init__.py")
         except Exception as e:
             print(f"⚠️ Could not create bridgy_main module: {e}")
     

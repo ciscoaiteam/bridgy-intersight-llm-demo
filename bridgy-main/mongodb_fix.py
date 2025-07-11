@@ -22,8 +22,6 @@ def fix_python_paths():
     if not os.path.exists("/app/bridgy_main"):
         try:
             os.symlink("/app/bridgy-main", "/app/bridgy_main")
-            with open("/app/bridgy_main/__init__.py", "w") as f:
-                pass
             print("✅ Created bridgy_main module link")
         except Exception as e:
             print(f"⚠️ Could not create bridgy_main module link: {e}")

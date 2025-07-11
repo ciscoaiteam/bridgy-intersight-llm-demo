@@ -52,9 +52,6 @@ def setup_bridgy_module():
         if not os.path.exists("/app/bridgy_main"):
             try:
                 os.symlink("/app/bridgy-main", "/app/bridgy_main")
-                # Create __init__.py to make it a valid Python package
-                with open("/app/bridgy_main/__init__.py", "w") as f:
-                    pass
                 print("✅ Created bridgy_main module link")
             except Exception as e:
                 print(f"⚠️ Could not create bridgy_main module link: {e}")

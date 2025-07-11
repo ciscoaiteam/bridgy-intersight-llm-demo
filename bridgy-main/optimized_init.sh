@@ -38,7 +38,7 @@ generate_env_file() {
     sed -i "s|{{NEXUS_DASHBOARD_USERNAME}}|${NEXUS_DASHBOARD_USERNAME:-admin}|g" "$TEMP_ENV_FILE"
     sed -i "s|{{NEXUS_DASHBOARD_PASSWORD}}|${NEXUS_DASHBOARD_PASSWORD:-}|g" "$TEMP_ENV_FILE"
     sed -i "s|{{INTERSIGHT_API_KEY}}|${INTERSIGHT_API_KEY:-}|g" "$TEMP_ENV_FILE"
-    sed -i "s|{{INTERSIGHT_PRIVATE_KEY_FILE}}|${INTERSIGHT_PRIVATE_KEY_FILE:-/app/bridgy-main/configs/intersight_api_key.pem}|g" "$TEMP_ENV_FILE"
+    sed -i "s|{{INTERSIGHT_PRIVATE_KEY_FILE}}|${INTERSIGHT_PRIVATE_KEY_FILE:-/app/bridgy-main/intersight.pem}|g" "$TEMP_ENV_FILE"
     sed -i "s|{{LANGSMITH_API_KEY}}|${LANGSMITH_API_KEY:-}|g" "$TEMP_ENV_FILE"
     sed -i "s|{{LANGCHAIN_PROJECT}}|${LANGCHAIN_PROJECT:-bridgy}|g" "$TEMP_ENV_FILE"
 

@@ -12,9 +12,9 @@ set -e  # Exit on error
 
 # Paths
 ENV_FILE="../.env"
-PEM_FILE="../intersight.pem"
-CERT_PATH="../cert.pem"
-KEY_PATH="../key.pem"
+PEM_FILE="../bridgy-main/intersight.pem"
+CERT_PATH="../bridgy-main/cert.pem"
+KEY_PATH="../bridgy-main/key.pem"
 SECRET_NAME="bridgy-secrets"
 OUTPUT_FILE="./bridgy-secrets.yaml"
 BRIDGY_CONFIG="./bridgy-optimized-deployment.yaml"

@@ -31,7 +31,7 @@ def verify_mongo_compatibility():
             import motor
             print(f"    pymongo version: {pymongo.__version__}")
             print(f"    motor version: {motor.version}")
-            print("    Compatible versions are pymongo==4.5.0 and motor==2.5.1")
+            print("    Compatible versions are pymongo==3.12.3 and motor==2.5.1")
         except ImportError as e:
             print(f"    Additional error: {e}")
         return False
@@ -48,7 +48,7 @@ critical_modules = [
 
 # Check MongoDB driver versions specifically
 mongo_modules = [
-    ("pymongo", "4.5.0"),
+    ("pymongo", "3.12.3"),
     ("motor", "2.5.1")
 ]
 

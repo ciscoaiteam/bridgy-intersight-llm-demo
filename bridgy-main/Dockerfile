@@ -45,9 +45,7 @@ COPY ./bridgy-main/verify_imports.py /app/bridgy-main/
 COPY ./bridgy-main/optimized_init.sh /app/bridgy-main/
 COPY ./bridgy-main/.env.template /app/bridgy-main/
 
-# Copy SSL certificates for HTTPS
-COPY ./cert.pem /app/bridgy-main/
-COPY ./key.pem /app/bridgy-main/
+# SSL certificates are already in the bridgy-main directory and will be copied with the app code
 
 # Set permissions for OpenShift (needs to be writable by any user)
 RUN chmod -R 777 /app
