@@ -83,11 +83,7 @@ generate_env_file
 # 3. Wait for MongoDB to be ready
 wait_for_mongodb
 
-# 3.5. Fix motor and pymongo compatibility issues
-echo "[+] Fixing MongoDB driver compatibility"
-pip uninstall -y motor pymongo
-pip install --no-cache-dir pymongo==4.5.0 motor==2.5.1
-echo "[+] Installed pymongo $(pip show pymongo | grep Version | cut -d' ' -f2) and motor $(pip show motor | grep Version | cut -d' ' -f2)"
+# MongoDB connection will be handled by packages from requirements.txt
 
 # 4. Run the import verification script
 echo "[+] Verifying Python imports"
@@ -100,10 +96,7 @@ cd /app/bridgy-main
 # Set up Python paths to ensure imports work correctly
 export PYTHONPATH="$PYTHONPATH:/app:/app/bridgy-main"
 
-# Run our MongoDB compatibility fix script
-echo "[+] Running MongoDB compatibility fix script"
-chmod +x /app/bridgy-main/mongodb_fix.py
-python3 /app/bridgy-main/mongodb_fix.py
+# No need for additional MongoDB compatibility fixes
 
 # Run the main application
 python3 main.py

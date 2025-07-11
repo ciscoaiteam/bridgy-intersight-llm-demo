@@ -35,10 +35,7 @@ COPY ./bridgy-main/requirements.txt /app/requirements.txt
 # Install Python packages
 RUN pip install --no-cache-dir -r /app/requirements.txt
 
-# Ensure specific compatible versions of motor and pymongo are installed
-# This fixes the "cannot import name '_QUERY_OPTIONS'" error
-RUN pip uninstall -y motor pymongo && \
-    pip install --no-cache-dir pymongo==4.5.0 motor==2.5.1
+# Use versions from requirements.txt only
 
 # Copy application code
 COPY ./bridgy-main /app/bridgy-main

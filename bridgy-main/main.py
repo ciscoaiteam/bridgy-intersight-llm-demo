@@ -1,26 +1,8 @@
 #!/usr/bin/env python3
-# MongoDB compatibility patch - MUST BE AT THE TOP BEFORE ANY IMPORTS
-# This fixes the "cannot import name '_QUERY_OPTIONS'" error
 import sys
 import os
 
-# Apply patch to pymongo.cursor to add _QUERY_OPTIONS if missing
 try:
-    # Try to import it to see if it already exists
-    try:
-        from pymongo.cursor import _QUERY_OPTIONS
-        print("✅ PyMongo already has _QUERY_OPTIONS, no patch needed")
-    except ImportError:
-        print("⚠️ PyMongo missing _QUERY_OPTIONS, applying patch")
-        # Import the module that needs patching
-        import pymongo.cursor
-        # Add the missing constant
-        pymongo.cursor._QUERY_OPTIONS = frozenset([
-            "tailable_cursor", "secondary_ok", "oplog_replay",
-            "no_timeout", "await_data", "exhaust", "partial"
-        ])
-        print("✅ Successfully added _QUERY_OPTIONS to pymongo.cursor")
-        
     # Fix module structure for bridgy_main
     # Create bridgy_main module symlink
     if not os.path.exists("/app/bridgy_main"):
