@@ -22,7 +22,7 @@ class ExpertRouter:
     def __init__(self):
         logger.error("initialize Expert Router")
         self.llm = OllamaLLM(
-            model="gemma2",  # Using local gemma2al model
+            model="gemma2",  # Using gemma2 model
             base_url="http://localhost:11434",
             temperature=0.0
         )

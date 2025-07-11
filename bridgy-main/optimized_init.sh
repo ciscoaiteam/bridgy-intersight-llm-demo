@@ -110,6 +110,16 @@ done
 
 if [ $COUNT -lt $MAX_RETRIES ]; then
     echo "[+] Ollama is ready!"
+    
+    # Download the required model
+    echo "[+] Downloading gemma2 model for Ollama (this may take a while)..."
+    ollama pull gemma2:latest --insecure
+    
+    if [ $? -eq 0 ]; then
+        echo "[+] Successfully downloaded gemma2 model"
+    else
+        echo "[!] Warning: Failed to download gemma2 model, the expert router may not function properly"
+    fi
 else
     echo "[!] Warning: Ollama may not be ready, continuing anyway"
 fi
