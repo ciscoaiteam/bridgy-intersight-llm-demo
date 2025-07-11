@@ -778,8 +778,8 @@ if __name__ == "__main__":
     logger.info("Initializing FastAPI server with HTTPS...")
     
     # Check if SSL certificate files exist
-    cert_file = "cert.pem"
-    key_file = "key.pem"
+    cert_file = "/app/bridgy-main/cert.pem"
+    key_file = "/app/bridgy-main/key.pem"
     
     if os.path.exists(cert_file) and os.path.exists(key_file):
         # Start server with HTTPS
