@@ -47,7 +47,7 @@ class IntersightClientTool:
             env_pem_path = os.getenv("INTERSIGHT_SECRET_KEY_PATH")
             
             # 2. Common paths
-            root_pem_path = "./intersight.pem"  # Project root
+            root_pem_path = "/app/bridgy-main/intersight.pem"  # Project root (absolute path)
             docker_pem_path = "/config/intersight.pem"  # Docker container path
             legacy_pem_path = "./config/intersight.pem"  # Legacy location
             openshift_pem_path = "/etc/intersight/intersight.pem"  # OpenShift mount path

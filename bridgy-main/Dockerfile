@@ -75,9 +75,10 @@ ENV PYTHONUNBUFFERED=1
 ENV MONGODB_HOST=mongodb
 ENV MONGODB_PORT=27017
 ENV MONGODB_URI=mongodb://mongodb:27017/bridgy
-ENV OLLAMA_HOME=/app/.ollama
-ENV OLLAMA_MODELS=/config/ollama
-ENV PATH="/root/.ollama/bin:${PATH}"
+ENV HOME=/tmp
+ENV OLLAMA_HOME=/tmp/.ollama
+ENV OLLAMA_MODELS=/tmp/ollama_models
+ENV PATH="/tmp/.ollama/bin:${PATH}"
 
 # Set the initialization script as the entrypoint
 ENTRYPOINT ["/app/bridgy-main/optimized_init.sh"]

@@ -91,8 +91,8 @@ mkdir -p $OLLAMA_HOME
 chmod -R 777 $OLLAMA_HOME
 
 # Ensure Ollama can write to the models directory
-mkdir -p /config/ollama
-chmod -R 777 /config/ollama
+mkdir -p /tmp/ollama_models
+chmod -R 777 /tmp/ollama_models
 
 # Start Ollama service
 echo "[+] Starting Ollama service"
