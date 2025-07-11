@@ -3,12 +3,41 @@
 ![Cisco Bridgy Logo](/image.png)
  
 [![OpenShift](https://img.shields.io/badge/openshift-deployment-red?style=flat-square&logo=redhat)](https://www.openshift.com/)
-[![Python Version](https://img.shields.io/badge/python-3.10-blue.svg)](https://www.python.org/downloads/)
+[![Docker](https://img.shields.io/badge/docker-compose-blue?style=flat-square&logo=docker)](https://www.docker.com/)
+[![Python Version](https://img.shields.io/badge/python-3.9-blue.svg)](https://www.python.org/downloads/)
 [![License](https://img.shields.io/badge/License-TBD-yellow.svg)](#license)
 
 ## Overview
 
 Cisco Bridgy is an advanced AI assistant designed to provide specialized expertise in Cisco infrastructure, focusing on Intersight, Nexus Dashboard, AI Pods, and general Cisco knowledge. Utilizing a sophisticated "Mix of Experts" model, the assistant routes queries to specialized knowledge domains for precise and context-aware responses.
+
+## Recent Improvements
+
+### Deployment Enhancements
+
+- **Docker Deployment**: Added Docker Compose support for local development and testing
+- **OpenShift Optimization**: Fixed deployment cleanup, permissions, and startup issues
+- **Dependency Management**: Consolidated requirements.txt with all needed packages
+- **Environment Handling**: Improved handling of environment variables and secrets
+
+### Expert System Improvements
+
+- **Enhanced Router Logic**: Improved query routing accuracy for server and LLM-related queries
+- **GPU Detection**: Fixed GPU inventory detection in Intersight API for better hardware reporting
+- **Infrastructure Expert**: Added new expert for cross-system insights
+- **Remote LLM Integration**: Configured all experts to use Meta-Llama-3-8B-Instruct model
+
+### Nexus Dashboard API Enhancements
+
+- **MSD Fabric Associations**: Added support for querying Multi-Site Domain fabrics
+- **External IP Configuration**: Added endpoints for trap and syslog IP configuration
+- **Device Inventory**: Added comprehensive switch/device inventory capabilities
+
+### Code Optimization
+
+- **Project Structure**: Removed unused utility files and consolidated modules
+- **Error Handling**: Improved API error handling and response processing
+- **Cross-System Queries**: Added infrastructure API for coordinated data retrieval
 
 ## Key Features
 
@@ -36,16 +65,23 @@ Cisco Bridgy is an advanced AI assistant designed to provide specialized experti
 
 ## System Requirements
 
-### Deployment Environment
+### Deployment Options
+
+#### OpenShift Deployment (Production)
 - **OpenShift Container Platform**: Version 4.x or higher
-- **GPU-enabled Node**: Nvidia GPU with minimum 18 GB VRAM
+- **Environment**: GPU-enabled Node with NVIDIA drivers
+- **Memory**: Minimum 4GB RAM allocation
 
-### Hardware Requirements
-- **GPU**: Nvidia GPU with CUDA support
-- **CUDA**: Version 12.x
-- **cuDNN**: Version 9+
+#### Docker Deployment (Development/Testing)
+- **Docker**: Latest stable version
+- **Docker Compose**: Latest stable version
+- **Host System**: Any system supporting Docker with at least 4GB free RAM
 
-### Software Prerequisites
+### LLM Service Requirements
+- **Remote LLM Service**: Access to http://64.101.169.102:8000/v1 
+- **Model**: Meta-Llama-3-8B-Instruct
+
+### Integration Prerequisites
 - Intersight API Key & PEM file (for Intersight integration)
 - Nexus Dashboard credentials (for Nexus Dashboard functionality)
 - LangSmith Key (Optional, for troubleshooting)
@@ -102,8 +138,8 @@ INTERSIGHT_API_KEY=your_intersight_api_key_id
 
 # Nexus Dashboard Configuration
 NEXUS_DASHBOARD_URL=https://your-nexus-dashboard-instance
-NEXUS_DASHBOARD_USERNAME=your_username
-NEXUS_DASHBOARD_PASSWORD=your_password
+NEXUS_DASHBOARD_USERNAME=<your_username>
+NEXUS_DASHBOARD_PASSWORD=<your_password>
 NEXUS_DASHBOARD_DOMAIN=local  # Optional, defaults to "local"
 ```
 
@@ -182,21 +218,30 @@ Ensure all pods are in the "Running" state and the logs show successful initiali
 ```
 ├── bridgy-main/                # Main application code
 │   ├── experts/                # Expert modules
-│   │   ├── ai_pods_expert.py    # AI Pods expert implementation
+│   │   ├── ai_pods_expert.py    # AI Pods expert - handles LLM parameter sizes & hardware requirements
 │   │   ├── general_expert.py    # General Cisco knowledge expert
-│   │   ├── intersight_expert.py # Intersight expert implementation
-│   │   ├── nexus_dashboard_expert.py # Nexus Dashboard expert implementation
-│   │   └── router.py            # Expert routing logic
+│   │   ├── infrastructure_expert.py # Infrastructure expert - cross-system insights
+│   │   ├── intersight_expert.py # Intersight expert - server & GPU inventory
+│   │   ├── nexus_dashboard_expert.py # Nexus Dashboard expert - network fabrics & devices
+│   │   └── router.py            # Enhanced expert routing logic with improved patterns
 │   ├── pdf/                    # Documentation PDFs
 │   ├── tools/                  # Utility tools
-│   │   ├── intersight_api.py    # Intersight API interface
-│   │   ├── nexus_dashboard_api.py # Nexus Dashboard API interface
+│   │   ├── infrastructure_api.py # Combined API for cross-system queries
+│   │   ├── intersight_api.py    # Intersight API with GPU detection support
+│   │   ├── nexus_dashboard_api.py # Enhanced Nexus Dashboard API with MSD & switch inventory
 │   │   └── pdf_loader.py        # PDF document loader
 │   ├── config.py               # Application configuration
-│   ├── Dockerfile              # Container definition for application
+│   ├── Dockerfile              # OpenShift-optimized container definition
+│   ├── optimized_init.sh       # Container initialization script with OpenShift compatibility
 │   ├── requirements.txt        # Consolidated Python dependencies with GPU support
 │   └── main.py                 # Main application entry point
+├── dockerdeploy/               # Docker deployment configurations
+│   ├── docker-compose.yml      # Docker Compose configuration for local deployment
+│   └── deploy_bridgy_docker.sh # Docker deployment script
 ├── osdeploy/                   # OpenShift deployment configurations
+│   ├── deploy_bridgy_os.sh     # Enhanced OpenShift deployment script with robust cleanup
+│   ├── bridgy-optimized-deployment.yaml # OpenShift deployment configuration
+│   └── README.md               # OpenShift deployment documentation
 │   ├── bridgy-main-cm1-configmap.yaml # Main ConfigMap with embedded Dockerfile
 │   └── [other deployment yamls]  # Other OpenShift resources
 └── entrypoint.sh               # Container entry point script

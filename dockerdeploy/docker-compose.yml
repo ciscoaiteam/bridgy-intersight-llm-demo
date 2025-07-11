@@ -1,0 +1,63 @@
+version: '3.8'
+
+services:
+  bridgy-main:
+    build:
+      context: ..
+      dockerfile: ../bridgy-main/Dockerfile
+    ports:
+      - "8443:8443"
+    volumes:
+      - ../config:/config
+      - ../bridgy-main:/app/bridgy-main
+      # Mount config for intersight key
+      - ../config:/app/bridgy-main/configs
+    environment:
+      # Python & app settings
+      - PYTHONPATH=/app:/app/bridgy-main:/app/bridgy:/tmp
+      
+      # MongoDB connection parameters
+      - MONGODB_HOST=mongodb
+      - MONGODB_PORT=27017
+      - MONGODB_URI=mongodb://bridgy:bridgy123@mongodb:27017/bridgy_db
+      
+      # LLM configuration - aligned with OpenShift deployment
+      - LLM_SERVICE_URL=http://64.101.169.102:8000/v1
+      - LLM_MODEL=/ai/models/Meta-Llama-3-8B-Instruct/
+      - LLM_API_KEY=${LLM_API_KEY:-llm-api-key}
+      
+      # CUDA configuration
+      - CUDA_VISIBLE_DEVICES=0
+      
+      # Nexus Dashboard integration
+      - NEXUS_DASHBOARD_URL=${NEXUS_DASHBOARD_URL}
+      - NEXUS_DASHBOARD_USERNAME=${NEXUS_DASHBOARD_USERNAME:-admin}
+      - NEXUS_DASHBOARD_PASSWORD=${NEXUS_DASHBOARD_PASSWORD}
+      
+      # Intersight API integration
+      - INTERSIGHT_API_KEY=${INTERSIGHT_API_KEY}
+      - INTERSIGHT_PRIVATE_KEY_FILE=/app/bridgy-main/configs/intersight_api_key.pem
+      
+      # Langsmith configuration
+      - LANGSMITH_API_KEY=${LANGSMITH_API_KEY}
+      - LANGCHAIN_PROJECT=bridgy
+    restart: unless-stopped
+    depends_on:
+      - mongodb
+    deploy:
+      resources:
+        limits:
+          memory: 4G
+        reservations:
+          memory: 2G
+
+  mongodb:
+    image: mongo:6.0
+    ports:
+      - "27017:27017"
+    volumes:
+      - mongodb_data:/data/db
+    restart: unless-stopped
+
+volumes:
+  mongodb_data:

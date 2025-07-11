@@ -76,13 +76,31 @@ safe_execute() {
   "$@" || echo "Command failed with exit code $? (continuing anyway)"
 }
 
+# First, let's get the current active deployment
+CURRENT_DC=$(oc get dc bridgy-main -o jsonpath='{.status.latestVersion}' 2>/dev/null || echo "0")
+echo "Current active deployment is: bridgy-main-$CURRENT_DC"
+
+# Clean up old replication controllers (which control the deployments)
+echo "Removing old bridgy-main replication controllers..."
+OLD_RCS=$(oc get rc -l app=bridgy-main | grep -v "NAME" | grep -v "bridgy-main-$CURRENT_DC" | awk '{print $1}' || true)
+if [ -n "$OLD_RCS" ]; then
+  echo "Found old replication controllers to clean up:"
+  for rc in $OLD_RCS; do
+    echo "Deleting RC: $rc"
+    safe_execute oc delete rc $rc
+  done
+else
+  echo "No old replication controllers found"
+fi
+
 # Clean up failed or completed bridgy-main deployment pods
 echo "Removing old bridgy-main deployment pods..."
-DEPLOY_PODS=$(oc get pods -l deploymentconfig=bridgy-main | grep -E "deploy" | grep -E "Completed|Error" | awk '{print $1}' || true)
+DEPLOY_PODS=$(oc get pods | grep "bridgy-main-.*-deploy" | grep -E "Completed|Error" | awk '{print $1}' || true)
 if [ -n "$DEPLOY_PODS" ]; then
-  echo "Found deployment pods to clean up: $DEPLOY_PODS"
+  echo "Found deployment pods to clean up:"
   for pod in $DEPLOY_PODS; do
-    safe_execute oc delete pod $pod
+    echo "Deleting deployment pod: $pod"
+    safe_execute oc delete pod $pod --force --grace-period=0
   done
 else
   echo "No old deployment pods found"
@@ -90,14 +108,28 @@ fi
 
 # Clean up pods in CrashLoopBackOff state
 echo "Removing bridgy-main pods in CrashLoopBackOff state..."
-CRASHED_PODS=$(oc get pods | grep -E "bridgy-main.*CrashLoopBackOff" | awk '{print $1}' || true)
+CRASHED_PODS=$(oc get pods | grep -E "bridgy-main" | grep -E "CrashLoopBackOff|Error|Completed" | grep -v "deploy" | grep -v "build" | awk '{print $1}' || true)
 if [ -n "$CRASHED_PODS" ]; then
-  echo "Found pods in CrashLoopBackOff: $CRASHED_PODS"
+  echo "Found pods in problem state:"
   for pod in $CRASHED_PODS; do
-    safe_execute oc delete pod $pod
+    echo "Deleting problem pod: $pod"
+    safe_execute oc delete pod $pod --force --grace-period=0
   done
 else
-  echo "No pods in CrashLoopBackOff state found"
+  echo "No bridgy-main pods in problem state found"
+fi
+
+# Clean up any orphaned deployments
+echo "Cleaning up orphaned deployments..."
+ORPHANED_DEPLOYMENTS=$(oc get deployments -l app=bridgy-main 2>/dev/null | grep -v "NAME" | awk '{print $1}' || true)
+if [ -n "$ORPHANED_DEPLOYMENTS" ]; then
+  echo "Found orphaned deployments:"
+  for dep in $ORPHANED_DEPLOYMENTS; do
+    echo "Deleting deployment: $dep"
+    safe_execute oc delete deployment $dep
+  done
+else
+  echo "No orphaned deployments found"
 fi
 
 # Clean up old bridgy-main builds
@@ -226,11 +258,34 @@ oc apply -f "$BRIDGY_CONFIG"
 
 # Clean up any failed builds
 echo "Cleaning up any previous failed builds..."
-oc delete builds -l openshift.io/build-config.name=bridgy-main --ignore-not-found=true
-oc delete pods -l openshift.io/build.name --ignore-not-found=true
+# Delete builds for bridgy-main
+FAILED_BUILDS=$(oc get builds -l buildconfig=bridgy-main --no-headers | grep -E "Failed|Error|Cancelled" | awk '{print $1}' || true)
+if [ -n "$FAILED_BUILDS" ]; then
+  echo "Found failed builds to clean up: $FAILED_BUILDS"
+  for build in $FAILED_BUILDS; do
+    safe_execute oc delete build $build
+  done
+else
+  echo "No failed builds found"
+fi
+# Delete build pods that belong to bridgy-main
+BUILD_PODS=$(oc get pods -l buildconfig=bridgy-main --no-headers | awk '{print $1}' || true)
+if [ -n "$BUILD_PODS" ]; then
+  echo "Found build pods to clean up: $BUILD_PODS"
+  for pod in $BUILD_PODS; do
+    safe_execute oc delete pod $pod
+  done
+else
+  echo "No build pods found"
+fi
 
-# Delete buildconfigs to ensure we're using the latest
-oc delete buildconfig bridgy-main --ignore-not-found=true
+# Delete buildconfig to ensure we're using the latest
+echo "Cleaning up existing buildconfig..."
+if oc get buildconfig bridgy-main &> /dev/null; then
+  safe_execute oc delete buildconfig bridgy-main
+else
+  echo "No existing buildconfig found"
+fi
 
 # Create a buildconfig inline since it may be missing after cleanup
 echo "Creating bridgy-main buildconfig..."

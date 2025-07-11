@@ -35,6 +35,11 @@ COPY ./bridgy-main/requirements.txt /app/requirements.txt
 # Install Python packages
 RUN pip install --no-cache-dir -r /app/requirements.txt
 
+# Ensure specific compatible versions of motor and pymongo are installed
+# This fixes the "cannot import name '_QUERY_OPTIONS'" error
+RUN pip uninstall -y motor pymongo && \
+    pip install --no-cache-dir pymongo==4.5.0 motor==2.5.1
+
 # Copy application code
 COPY ./bridgy-main /app/bridgy-main
 
@@ -43,8 +48,8 @@ COPY ./bridgy-main/verify_imports.py /app/bridgy-main/
 COPY ./bridgy-main/optimized_init.sh /app/bridgy-main/
 COPY ./bridgy-main/.env.template /app/bridgy-main/
 
-# Set permissions
-RUN chmod -R 755 /app
+# Set permissions for OpenShift (needs to be writable by any user)
+RUN chmod -R 777 /app
 
 # Create Python module structure at build time
 RUN touch /app/bridgy-main/__init__.py && \

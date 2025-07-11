@@ -1,3 +1,64 @@
+#!/usr/bin/env python3
+# MongoDB compatibility patch - MUST BE AT THE TOP BEFORE ANY IMPORTS
+# This fixes the "cannot import name '_QUERY_OPTIONS'" error
+import sys
+import os
+
+# Apply patch to pymongo.cursor to add _QUERY_OPTIONS if missing
+try:
+    # Try to import it to see if it already exists
+    try:
+        from pymongo.cursor import _QUERY_OPTIONS
+        print("✅ PyMongo already has _QUERY_OPTIONS, no patch needed")
+    except ImportError:
+        print("⚠️ PyMongo missing _QUERY_OPTIONS, applying patch")
+        # Import the module that needs patching
+        import pymongo.cursor
+        # Add the missing constant
+        pymongo.cursor._QUERY_OPTIONS = frozenset([
+            "tailable_cursor", "secondary_ok", "oplog_replay",
+            "no_timeout", "await_data", "exhaust", "partial"
+        ])
+        print("✅ Successfully added _QUERY_OPTIONS to pymongo.cursor")
+        
+    # Fix module structure for bridgy_main
+    # Create bridgy_main module symlink
+    if not os.path.exists("/app/bridgy_main"):
+        try:
+            # Create symlink from bridgy-main to bridgy_main
+            os.symlink("/app/bridgy-main", "/app/bridgy_main")
+            print("✅ Created bridgy_main module symlink")
+            
+            # Create __init__.py to make it a proper package
+            with open("/app/bridgy_main/__init__.py", "w") as f:
+                f.write("# Generated package file\n")
+            print("✅ Created bridgy_main/__init__.py")
+        except Exception as e:
+            print(f"⚠️ Could not create bridgy_main module: {e}")
+    
+    # Add important paths to Python path
+    sys_paths = ["/app", "/app/bridgy-main", "/app/bridgy_main"]
+    for path in sys_paths:
+        if path not in sys.path:
+            sys.path.append(path)
+            print(f"✅ Added {path} to Python path")
+    
+    # Ensure .env file exists at /app/.env
+    if os.path.exists("/app/bridgy-main/.env") and not os.path.exists("/app/.env"):
+        try:
+            os.symlink("/app/bridgy-main/.env", "/app/.env")
+            print("✅ Created .env symlink")
+        except:
+            from shutil import copyfile
+            copyfile("/app/bridgy-main/.env", "/app/.env")
+            print("✅ Copied .env file to /app/.env")
+            
+    # Now proceed with normal imports
+    print("✅ MongoDB compatibility fix applied, continuing with imports")
+except Exception as e:
+    print(f"⚠️ Error applying MongoDB compatibility patch: {e}")
+
+# Regular imports follow
 from fastapi import FastAPI, HTTPException, Request, Header, Depends
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
@@ -16,6 +77,38 @@ from experts.router import ExpertRouter
 import ssl
 import motor.motor_asyncio
 from bson import ObjectId
+# MongoDB compatibility fix - apply before any imports
+import sys
+import os
+
+# Check if we need to fix the motor/pymongo compatibility
+try:
+    # Test if the problematic import works
+    from pymongo.cursor import _QUERY_OPTIONS
+    print("✅ Motor/PyMongo compatibility check passed")
+except ImportError:
+    print("⚠️ Applying motor/pymongo compatibility patch")
+    
+    # Create the missing variable in pymongo.cursor
+    import pymongo.cursor
+    pymongo.cursor._QUERY_OPTIONS = frozenset([
+        "tailable_cursor", "secondary_ok", "oplog_replay",
+        "no_timeout", "await_data", "exhaust", "partial"
+    ])
+    print("✅ Added _QUERY_OPTIONS to pymongo.cursor")
+
+# Ensure bridgy_main is importable
+if not os.path.exists("/app/bridgy_main"):
+    os.symlink("/app/bridgy-main", "/app/bridgy_main")
+    with open("/app/bridgy_main/__init__.py", "w") as f:
+        pass
+    print("✅ Created bridgy_main module link")
+    
+# Make sure Python path is set correctly
+for path in ["/app", "/app/bridgy-main", "/app/bridgy_main"]:
+    if path not in sys.path:
+        sys.path.append(path)
+
 import asyncio
 import re
 
@@ -93,7 +186,17 @@ logger.info("Main logger test")
 logging.getLogger("experts.router").error("Test from experts.router logger")
 
 # Load environment variables
-load_dotenv()
+# Use the canonical .env file location
+canonical_env_file = "/app/bridgy-main/.env"
+
+# Load environment variables from the canonical location
+if os.path.exists(canonical_env_file):
+    print(f"✅ Loading environment from canonical location: {canonical_env_file}")
+    load_dotenv(canonical_env_file)
+else:
+    print(f"⚠️ Canonical .env file not found at {canonical_env_file}, using environment variables only")
+    # Try without a path as last resort
+    load_dotenv()
 logger.debug("Environment variables loaded")
 
 # MongoDB Configuration
