@@ -178,6 +178,12 @@ logger.debug("Environment variables loaded")
 
 # MongoDB Configuration
 MONGODB_URL = os.getenv("MONGODB_URL", "mongodb://localhost:27017")
+# Ensure no auth credentials are in the URL
+if '@' in MONGODB_URL:
+    # Strip out authentication if present
+    parts = MONGODB_URL.split('@')
+    if len(parts) > 1:
+        MONGODB_URL = 'mongodb://' + parts[1]
 DB_NAME = os.getenv("MONGODB_DB", "bridgy_db")
 THREADS_COLLECTION = "threads"
 MESSAGES_COLLECTION = "messages"

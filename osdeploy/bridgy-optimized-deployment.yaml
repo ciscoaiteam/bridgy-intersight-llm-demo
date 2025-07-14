@@ -34,7 +34,7 @@ spec:
         - name: MONGODB_PORT
           value: "27017"
         - name: MONGODB_URI
-          value: "mongodb://bridgy:bridgy123@mongodb:27017/bridgy_db"
+          value: "mongodb://mongodb:27017/bridgy_db"
         # LLM configuration
         - name: LLM_SERVICE_URL
           value: "http://64.101.169.102:8000/v1"

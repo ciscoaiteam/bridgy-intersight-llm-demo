@@ -31,7 +31,9 @@ generate_env_file() {
     fi
 
     # Replace the placeholder values with actual environment variables
-    sed -i "s|{{MONGODB_URI}}|${MONGODB_URI}|g" "$TEMP_ENV_FILE"
+    # Ensure MongoDB URI has no authentication
+    MONGODB_URI_NO_AUTH="mongodb://${MONGODB_HOST}:${MONGODB_PORT}/${MONGODB_DB:-bridgy_db}"
+    sed -i "s|{{MONGODB_URI}}|${MONGODB_URI_NO_AUTH}|g" "$TEMP_ENV_FILE"
     sed -i "s|{{CUDA_VISIBLE_DEVICES}}|${CUDA_VISIBLE_DEVICES:-0}|g" "$TEMP_ENV_FILE"
     sed -i "s|{{LLM_SERVICE_URL}}|${LLM_SERVICE_URL:-http://localhost:11434}|g" "$TEMP_ENV_FILE"
     sed -i "s|{{NEXUS_DASHBOARD_URL}}|${NEXUS_DASHBOARD_URL:-}|g" "$TEMP_ENV_FILE"

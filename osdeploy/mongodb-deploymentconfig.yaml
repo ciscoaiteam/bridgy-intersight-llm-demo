@@ -28,14 +28,8 @@ spec:
         - containerPort: 27017
         command: ["mongod", "--config", "/etc/mongo/mongod.conf"]
         env:
-        - name: MONGO_INITDB_ROOT_USERNAME
-          value: "bridgy"
-        - name: MONGO_INITDB_ROOT_PASSWORD
-          value: "bridgy123"
         - name: MONGO_INITDB_DATABASE
           value: "bridgy_db"
-        - name: MONGO_INITDB_AUTH_MECHANISM
-          value: "SCRAM-SHA-1"
         resources:
           limits:
             memory: 512Mi

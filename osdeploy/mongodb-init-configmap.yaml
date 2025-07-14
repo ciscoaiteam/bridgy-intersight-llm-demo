@@ -7,19 +7,7 @@ metadata:
 data:
   init-mongo.js: |
     // This script will run automatically when MongoDB starts
-    // Create admin user that can create other users
-    print('Initializing MongoDB for Bridgy application...');
-    
-    db = db.getSiblingDB('admin');
-    db.createUser({
-      user: 'bridgy',
-      pwd: 'bridgy123',
-      roles: [
-        { role: 'userAdminAnyDatabase', db: 'admin' },
-        { role: 'readWriteAnyDatabase', db: 'admin' },
-        { role: 'dbAdminAnyDatabase', db: 'admin' }
-      ]
-    });
+    print('Initializing MongoDB for Bridgy application without authentication...');
     
     // Create and initialize the bridgy_db database
     db = db.getSiblingDB('bridgy_db');

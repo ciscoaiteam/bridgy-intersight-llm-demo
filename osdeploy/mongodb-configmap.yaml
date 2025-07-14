@@ -27,4 +27,4 @@ data:
     
     # security
     security:
-      authorization: enabled
+      authorization: disabled
