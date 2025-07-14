@@ -20,6 +20,7 @@ services:
       - MONGODB_HOST=mongodb
       - MONGODB_PORT=27017
       - MONGODB_URI=mongodb://mongodb:27017/bridgy_db
+      - MONGO_ENABLED=true
       
       # LLM configuration - aligned with OpenShift deployment
       - LLM_SERVICE_URL=http://64.101.169.102:8000/v1

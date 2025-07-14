@@ -28,3 +28,13 @@ data:
     # security
     security:
       authorization: disabled
+  init-mongo.js: |
+    // This script will run automatically when MongoDB starts
+    print('Initializing MongoDB for Bridgy application without authentication...');
+    
+    // Create and initialize the bridgy_db database
+    db = db.getSiblingDB('bridgy_db');
+    db.createCollection('sessions');
+    db.sessions.insert({ name: 'initialization', status: 'completed', timestamp: new Date() });
+    
+    print('MongoDB initialization complete!');

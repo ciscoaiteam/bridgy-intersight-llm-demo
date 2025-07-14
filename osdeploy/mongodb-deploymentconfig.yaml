@@ -44,7 +44,7 @@ spec:
           mountPath: /data/db
         - name: mongodb-log
           mountPath: /var/log/mongodb
-        - name: mongodb-init-script
+        - name: mongodb-config-init
           mountPath: /docker-entrypoint-initdb.d/
           readOnly: false
       volumes:
@@ -55,6 +55,12 @@ spec:
       - name: mongodb-config
         configMap:
           name: mongodb-config
-      - name: mongodb-init-script
+          items:
+          - key: mongod.conf
+            path: mongod.conf
+      - name: mongodb-config-init
         configMap:
-          name: mongodb-init-script
+          name: mongodb-config
+          items:
+          - key: init-mongo.js
+            path: init-mongo.js
