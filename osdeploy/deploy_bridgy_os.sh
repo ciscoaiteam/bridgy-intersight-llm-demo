@@ -272,7 +272,7 @@ if [ -f "$VLLM_MODELS_PVC" ] && [ -f "$VLLM_HF_PVC" ] && [ -f "$VLLM_SERVICE" ] 
   
   # Parse .env file for HF_TOKEN if it exists
   if [ -f "$ENV_FILE" ]; then
-    HF_TOKEN=$(grep -oP 'HF_TOKEN=\K.*' "$ENV_FILE" || echo "")
+    HF_TOKEN=$(grep 'HF_TOKEN=' "$ENV_FILE" | sed 's/HF_TOKEN=//' || echo "")
     if [ -n "$HF_TOKEN" ]; then
       echo "Found Hugging Face token in .env file. Updating secret..."
       oc patch secret "$SECRET_NAME" --type=merge -p "{\"stringData\":{\"hf-token\":\"$HF_TOKEN\"}}"
@@ -450,9 +450,9 @@ EOF
     oc create imagestream vllm-server
   fi
 
-  # Start the vLLM build using the binary build directory with increased timeout for model download
+  # Start the vLLM build using the binary build directory
   echo "Starting vllm-server build (this may take 15-30 minutes for model download)..."
-  oc start-build vllm-server --from-dir="$VLLM_DIR" --follow --wait=true --timeout=60m
+  oc start-build vllm-server --from-dir="$VLLM_DIR" --follow --wait=true
   
   # Apply vLLM deployment after image is built
   echo "Applying vLLM deployment..."
