@@ -15,18 +15,7 @@ RUN apt-get update && apt-get install -y \
     netcat-openbsd \
     wget
 
-# No longer using Ollama - using remote vLLM server instead
-
-# Set up CUDA environment without full installation
-# This is more compatible with OpenShift and avoids dependency issues
-RUN mkdir -p /usr/local/cuda/lib64 \
-    && mkdir -p /usr/local/cuda/include \
-    && touch /usr/local/cuda/include/cuda.h
-
-# Set CUDA environment variables (these will be available at runtime)
-ENV PATH="${PATH}:/usr/local/cuda/bin"
-ENV LD_LIBRARY_PATH="/usr/local/cuda/lib64:${LD_LIBRARY_PATH}"
-ENV CUDA_HOME="/usr/local/cuda"
+# Using remote vLLM server instead of local LLM processing
 
 # Install Python dependencies
 WORKDIR /app
