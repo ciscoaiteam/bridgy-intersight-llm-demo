@@ -289,7 +289,7 @@ def generate_id() -> str:
     return str(uuid.uuid4())
 
 def get_timestamp() -> str:
-    return int(time.time() * 1000)
+    return str(int(time.time() * 1000))
 
 def get_unix_timestamp() -> int:
     return int(time.time() * 1000)
