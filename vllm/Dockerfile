@@ -18,6 +18,15 @@ RUN wget https://repo.anaconda.com/miniconda/Miniconda3-latest-Linux-x86_64.sh -
     && bash /tmp/miniconda.sh -b -p /root/miniconda3 \
     && rm /tmp/miniconda.sh
 
+# Accept Conda Terms of Service
+RUN conda config --set auto_activate_base false && \
+    conda config --set channel_priority strict && \
+    conda config --append channels conda-forge && \
+    echo "conda config --set unsatisfiable_hints_check_depth 0" >> /root/.bashrc && \
+    conda config --set unsatisfiable_hints_check_depth 0 && \
+    yes | conda tos accept --override-channels --channel https://repo.anaconda.com/pkgs/main && \
+    yes | conda tos accept --override-channels --channel https://repo.anaconda.com/pkgs/r
+    
 # Set up Conda environment for vLLM
 RUN conda create -n vllm python=3.10 -y
 ENV PATH="/root/miniconda3/envs/vllm/bin:${PATH}"
@@ -53,6 +62,15 @@ RUN wget https://repo.anaconda.com/miniconda/Miniconda3-latest-Linux-x86_64.sh -
     && bash /tmp/miniconda.sh -b -p /root/miniconda3 \
     && rm /tmp/miniconda.sh
 
+# Accept Conda Terms of Service
+RUN conda config --set auto_activate_base false && \
+    conda config --set channel_priority strict && \
+    conda config --append channels conda-forge && \
+    echo "conda config --set unsatisfiable_hints_check_depth 0" >> /root/.bashrc && \
+    conda config --set unsatisfiable_hints_check_depth 0 && \
+    yes | conda tos accept --override-channels --channel https://repo.anaconda.com/pkgs/main && \
+    yes | conda tos accept --override-channels --channel https://repo.anaconda.com/pkgs/r
+    
 # Copy Python environment from builder
 COPY --from=builder /root/miniconda3 /root/miniconda3
 
