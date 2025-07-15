@@ -20,8 +20,6 @@ venv/
 
 # Credentials and configuration files
 intersight.pem
-config/intersight.pem
-config/ollama/*
 cert.pem
 key.pem
 osdeploy/bridgy-main-env-configmap.yaml
