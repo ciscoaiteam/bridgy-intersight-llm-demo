@@ -450,9 +450,9 @@ EOF
     oc create imagestream vllm-server
   fi
 
-  # Start the vLLM build using the binary build directory
-  echo "Starting vLLM build from directory $VLLM_DIR (this may take a while)..."
-  oc start-build vllm-server --from-dir="$VLLM_DIR" --follow
+  # Start the vLLM build using the binary build directory with increased timeout for model download
+  echo "Starting vllm-server build (this may take 15-30 minutes for model download)..."
+  oc start-build vllm-server --from-dir="$VLLM_DIR" --follow --wait=true --timeout=60m
   
   # Apply vLLM deployment after image is built
   echo "Applying vLLM deployment..."

@@ -38,7 +38,19 @@ RUN pip install --no-cache-dir \
     torchaudio==2.1.2 \
     --index-url https://download.pytorch.org/whl/cu121
     
-RUN pip install --no-cache-dir vllm==0.3.0 transformers==4.37.0 sentencepiece==0.1.99 accelerate==0.25.0
+RUN pip install --no-cache-dir vllm==0.3.0 transformers==4.37.0 sentencepiece==0.1.99 accelerate==0.25.0 huggingface_hub
+
+# Create directories for models and cache
+RUN mkdir -p /data/models /data/huggingface
+
+# Set environment variables for model download
+ENV HF_HOME=/data/huggingface
+ENV MODEL_NAME="google/gemma-2-9b-it"
+ENV MODEL_PATH=/data/models/gemma-2-9b-it
+
+# Download the Gemma 2 model during build
+RUN echo "Downloading model $MODEL_NAME to $MODEL_PATH..." && \
+    python -c "from huggingface_hub import snapshot_download; snapshot_download(repo_id='$MODEL_NAME', local_dir='$MODEL_PATH')"
 
 # Create a runtime image
 FROM nvidia/cuda:12.1.0-runtime-ubuntu22.04
@@ -78,20 +90,15 @@ COPY --from=builder /root/miniconda3 /root/miniconda3
 RUN echo "source activate vllm" >> ~/.bashrc
 ENV PATH="/root/miniconda3/envs/vllm/bin:${PATH}"
 
-# Create directories
-RUN mkdir -p /data/models /data/huggingface
+# Copy model and cache data from the builder stage
+COPY --from=builder /data/models /data/models
+COPY --from=builder /data/huggingface /data/huggingface
 
-# Create script to download and run the Gemma 2 model
+# Create script to run the pre-downloaded Gemma 2 model
 RUN echo '#!/bin/bash \n\
 set -e \n\
 MODEL_PATH="/data/models/gemma-2-9b-it" \n\
-MODEL_NAME="google/gemma-2-9b-it" \n\
-if [ ! -d "$MODEL_PATH" ]; then \n\
-    echo "Downloading model $MODEL_NAME to $MODEL_PATH..." \n\
-    python -c "from huggingface_hub import snapshot_download; snapshot_download(repo_id=\"$MODEL_NAME\", local_dir=\"$MODEL_PATH\")" \n\
-else \n\
-    echo "Model $MODEL_NAME already downloaded at $MODEL_PATH" \n\
-fi \n\
+echo "Using pre-downloaded model at $MODEL_PATH" \n\
 python -m vllm.entrypoints.openai.api_server \
     --model $MODEL_PATH \
     --tensor-parallel-size ${TENSOR_PARALLEL_SIZE:-1} \
