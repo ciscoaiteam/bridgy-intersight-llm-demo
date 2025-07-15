@@ -101,8 +101,9 @@ threadpoolctl==3.6.0
 tiktoken==0.9.0
 tokenizers==0.21.1
 toml==0.10.2
-# Using CPU-only PyTorch since CUDA is not needed in bridgy-main
-torch==2.2.1+cpu
+# Since we're no longer using GPU capabilities, we can just use regular PyTorch
+# which will default to CPU operations
+torch==2.2.1
 tornado==6.4.2
 tqdm==4.67.1
 transformers>=4.38.0
