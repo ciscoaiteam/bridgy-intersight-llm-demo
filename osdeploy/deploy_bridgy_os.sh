@@ -370,8 +370,8 @@ chmod +x "$MAIN_DIR/bridgy-main/optimized_init.sh"
 
 # Start the build if it doesn't exist
 if ! oc get builds -l buildconfig=bridgy-main | grep -q "bridgy-main-"; then
-  echo "Starting new build for bridgy-main..."
-  oc start-build bridgy-main --wait
+  echo "Starting new build for bridgy-main from directory $MAIN_DIR..."
+  oc start-build bridgy-main --from-dir="$MAIN_DIR" --wait
 else
   echo "Build already exists, not starting a new one"
 fi
@@ -398,7 +398,15 @@ if [ "$USE_VLLM" = true ]; then
     echo "No existing vLLM buildconfig found"
   fi
   
-  # Create vLLM buildconfig
+  # Create vLLM build directory
+  VLLM_DIR="$BUILD_DIR/vllm"
+  echo "Preparing vLLM build directory at $VLLM_DIR..."
+  mkdir -p "$VLLM_DIR"
+  
+  # Copy vLLM files to build directory
+  cp -r "$SCRIPT_DIR/../vllm/"* "$VLLM_DIR/"
+  
+  # Create vLLM buildconfig for binary build
   echo "Creating vllm-server buildconfig..."
   cat <<EOF | oc apply -f -
 apiVersion: build.openshift.io/v1
@@ -415,11 +423,8 @@ spec:
       kind: ImageStreamTag
       name: vllm-server:latest
   source:
-    contextDir: vllm
-    git:
-      uri: https://github.com/mikduart/bridgy-intersight-llm-demo.git
-      ref: main
-    type: Git
+    type: Binary
+    binary: {}
   strategy:
     type: Docker
     dockerStrategy:
@@ -434,9 +439,9 @@ EOF
     oc create imagestream vllm-server
   fi
 
-  # Start the vLLM build
-  echo "Starting vLLM build (this may take a while)..."
-  oc start-build vllm-server --follow
+  # Start the vLLM build using the binary build directory
+  echo "Starting vLLM build from directory $VLLM_DIR (this may take a while)..."
+  oc start-build vllm-server --from-dir="$VLLM_DIR" --follow
   
   # Apply vLLM deployment after image is built
   echo "Applying vLLM deployment..."
