@@ -10,11 +10,15 @@
 
 set -e  # Exit on error
 
+# Get the directory where this script is located
+SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
+PROJECT_ROOT="$( cd "$SCRIPT_DIR/.." && pwd )"
+
 # Paths
-ENV_FILE="../.env"
-PEM_FILE="../bridgy-main/intersight.pem"
-CERT_PATH="../bridgy-main/cert.pem"
-KEY_PATH="../bridgy-main/key.pem"
+ENV_FILE="$PROJECT_ROOT/.env"
+PEM_FILE="$PROJECT_ROOT/bridgy-main/intersight.pem"
+CERT_PATH="$PROJECT_ROOT/bridgy-main/cert.pem"
+KEY_PATH="$PROJECT_ROOT/bridgy-main/key.pem"
 SECRET_NAME="bridgy-secrets"
 OUTPUT_FILE="./bridgy-secrets.yaml"
 BRIDGY_CONFIG="./bridgy-optimized-deployment.yaml"
@@ -404,7 +408,14 @@ if [ "$USE_VLLM" = true ]; then
   mkdir -p "$VLLM_DIR"
   
   # Copy vLLM files to build directory
-  cp -r "$SCRIPT_DIR/../vllm/"* "$VLLM_DIR/"
+  if [ -d "$PROJECT_ROOT/vllm" ]; then
+    echo "Copying vLLM files from $PROJECT_ROOT/vllm/..."
+    cp -r "$PROJECT_ROOT/vllm/"* "$VLLM_DIR/"
+  else
+    echo "ERROR: vLLM directory not found at $PROJECT_ROOT/vllm"
+    echo "Please ensure the vllm directory exists in the project root."
+    exit 1
+  fi
   
   # Create vLLM buildconfig for binary build
   echo "Creating vllm-server buildconfig..."
