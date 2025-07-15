@@ -38,7 +38,7 @@ RUN pip install --no-cache-dir \
     torchaudio==2.1.2 \
     --index-url https://download.pytorch.org/whl/cu121
     
-RUN pip install --no-cache-dir vllm==0.3.0 transformers==4.35.2 sentencepiece==0.1.99 accelerate==0.25.0
+RUN pip install --no-cache-dir vllm==0.3.0 transformers==4.37.0 sentencepiece==0.1.99 accelerate==0.25.0
 
 # Create a runtime image
 FROM nvidia/cuda:12.1.0-runtime-ubuntu22.04
