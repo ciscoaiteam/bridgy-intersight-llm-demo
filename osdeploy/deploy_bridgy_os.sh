@@ -22,6 +22,10 @@ MONGODB_CONFIG="./mongodb-deploymentconfig.yaml"
 MONGODB_SERVICE="./mongodb-service.yaml"
 MONGODB_CONFIGMAP="./mongodb-configmap.yaml"
 MONGODB_INIT_CONFIGMAP="./mongodb-init-configmap.yaml"
+VLLM_DEPLOYMENT="./vllm-deployment.yaml"
+VLLM_SERVICE="./vllm-service.yaml"
+VLLM_MODELS_PVC="./vllm-models-persistentvolumeclaim.yaml"
+VLLM_HF_PVC="./vllm-huggingface-persistentvolumeclaim.yaml"
 
 # Check if files exist
 if [ ! -f "$ENV_FILE" ]; then
@@ -252,6 +256,34 @@ if [ "$SSL_CERTS_AVAILABLE" = true ] || [ -f "$(dirname "$0")/bridgy-ssl-configm
   fi
 fi
 
+# Apply vLLM resources if they exist
+echo "Checking for vLLM resources..."
+if [ -f "$VLLM_MODELS_PVC" ] && [ -f "$VLLM_HF_PVC" ] && [ -f "$VLLM_SERVICE" ] && [ -f "$VLLM_DEPLOYMENT" ]; then
+  echo "vLLM resources found. Applying persistent volume claims..."
+  oc apply -f "$VLLM_MODELS_PVC"
+  oc apply -f "$VLLM_HF_PVC"
+  
+  echo "Applying vLLM service..."
+  oc apply -f "$VLLM_SERVICE"
+  
+  # Parse .env file for HF_TOKEN if it exists
+  if [ -f "$ENV_FILE" ]; then
+    HF_TOKEN=$(grep -oP 'HF_TOKEN=\K.*' "$ENV_FILE" || echo "")
+    if [ -n "$HF_TOKEN" ]; then
+      echo "Found Hugging Face token in .env file. Updating secret..."
+      oc patch secret "$SECRET_NAME" --type=merge -p "{\"stringData\":{\"hf-token\":\"$HF_TOKEN\"}}"
+    else
+      echo "No Hugging Face token found in .env file. You may need to set it manually."
+    fi
+  fi
+  
+  USE_VLLM=true
+  echo "vLLM resources applied successfully."
+else
+  USE_VLLM=false
+  echo "vLLM resources not found or incomplete. Skipping vLLM deployment."
+fi
+
 # Apply the Bridgy configuration
 echo "Applying Bridgy optimized configuration with separated MongoDB..."
 oc apply -f "$BRIDGY_CONFIG"
@@ -336,12 +368,89 @@ cp "$(dirname "$0")/../bridgy-main/Dockerfile" "$MAIN_DIR/Dockerfile"
 chmod +x "$MAIN_DIR/bridgy-main/verify_imports.py"
 chmod +x "$MAIN_DIR/bridgy-main/optimized_init.sh"
 
-# Start the build with binary source
-echo ""
-echo "Starting build for bridgy-main..."
-oc start-build bridgy-main --from-dir="$MAIN_DIR" --follow
+# Start the build if it doesn't exist
+if ! oc get builds -l buildconfig=bridgy-main | grep -q "bridgy-main-"; then
+  echo "Starting new build for bridgy-main..."
+  oc start-build bridgy-main --wait
+else
+  echo "Build already exists, not starting a new one"
+fi
 
-# Clean up temp directory
+# Only build vLLM if we found the resources earlier
+if [ "$USE_VLLM" = true ]; then
+  # Check if vLLM buildconfig exists, clean up if needed
+  echo "Checking for vLLM buildconfig..."
+  
+  # Clean up any failed vLLM builds
+  FAILED_BUILDS=$(oc get builds -l buildconfig=vllm-server --no-headers | grep -E "Failed|Error|Cancelled" | awk '{print $1}' || true)
+  if [ -n "$FAILED_BUILDS" ]; then
+    echo "Found failed vLLM builds to clean up: $FAILED_BUILDS"
+    for build in $FAILED_BUILDS; do
+      safe_execute oc delete build $build
+    done
+  fi
+  
+  # Delete vLLM buildconfig to ensure we're using the latest
+  echo "Cleaning up existing vLLM buildconfig..."
+  if oc get buildconfig vllm-server &> /dev/null; then
+    safe_execute oc delete buildconfig vllm-server
+  else
+    echo "No existing vLLM buildconfig found"
+  fi
+  
+  # Create vLLM buildconfig
+  echo "Creating vllm-server buildconfig..."
+  cat <<EOF | oc apply -f -
+apiVersion: build.openshift.io/v1
+kind: BuildConfig
+metadata:
+  name: vllm-server
+  labels:
+    app: vllm-server
+spec:
+  failedBuildsHistoryLimit: 3
+  successfulBuildsHistoryLimit: 3
+  output:
+    to:
+      kind: ImageStreamTag
+      name: vllm-server:latest
+  source:
+    contextDir: vllm
+    git:
+      uri: https://github.com/mikduart/bridgy-intersight-llm-demo.git
+      ref: main
+    type: Git
+  strategy:
+    type: Docker
+    dockerStrategy:
+      dockerfilePath: Dockerfile
+  triggers:
+    - type: ConfigChange
+EOF
+
+  # Create ImageStream if it doesn't exist
+  if ! oc get imagestream vllm-server &> /dev/null; then
+    echo "Creating ImageStream for vllm-server..."
+    oc create imagestream vllm-server
+  fi
+
+  # Start the vLLM build
+  echo "Starting vLLM build (this may take a while)..."
+  oc start-build vllm-server --follow
+  
+  # Apply vLLM deployment after image is built
+  echo "Applying vLLM deployment..."
+  oc apply -f "$VLLM_DEPLOYMENT"
+  
+  echo "Waiting for vLLM deployment to start..."
+  # This may timeout if the image is large and still pulling, that's ok
+  oc rollout status deploymentconfig/vllm-server --timeout=180s || true
+  
+  # Update Bridgy to use vLLM if requested
+  echo "Updating Bridgy to use vLLM server for local inference..."
+  oc set env deploymentconfig/bridgy-main LLM_SERVICE_URL=http://vllm-server:8000/v1 LLM_MODEL=gemma-2-9b
+fi
+
 rm -rf "$BUILD_DIR"
 echo "Cleaned up temporary build directories."
 

@@ -6,7 +6,7 @@ import logging
 from typing import Dict, Any, List, Optional
 
 from langchain_openai import ChatOpenAI
-from langchain_ollama import OllamaLLM
+# Using OpenAI-compatible API for remote LLM or vLLM
 from langchain.schema.messages import HumanMessage, SystemMessage
 
 from tools.infrastructure_api import InfrastructureAPI
@@ -25,9 +25,10 @@ class InfrastructureExpert:
             self.api = InfrastructureAPI()
             
             # Initialize the LLM
-            self.llm = OllamaLLM(
-                model="gemma2",  # Using local gemma2al model
-                base_url="http://localhost:11434",
+            self.llm = ChatOpenAI(
+                model_name=os.getenv("LLM_MODEL", "gemma-2-9b"),
+                base_url=os.getenv("LLM_SERVICE_URL", "http://vllm-server:8000/v1"),
+                api_key=os.getenv("LLM_API_KEY", "llm-api-key"),
                 temperature=0.0
             )
             

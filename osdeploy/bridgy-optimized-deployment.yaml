@@ -37,11 +37,11 @@ spec:
           value: "mongodb://mongodb:27017/bridgy_db"
         - name: MONGO_ENABLED
           value: "true"
-        # LLM configuration
+        # LLM configuration - using local vLLM server
         - name: LLM_SERVICE_URL
-          value: "http://64.101.169.102:8000/v1"
+          value: "http://vllm-server:8000/v1"
         - name: LLM_MODEL
-          value: "/ai/models/Meta-Llama-3-8B-Instruct/"
+          value: "gemma-2-9b"
         - name: LLM_API_KEY
           value: "llm-api-key"
         # CUDA configuration

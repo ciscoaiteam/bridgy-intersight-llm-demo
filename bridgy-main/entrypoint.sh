@@ -1,15 +1,11 @@
 #!/bin/bash
 # This file is modified for OpenShift deployment
 
-# Create Ollama directory with proper permissions
-echo "[+] Creating Ollama directory structure"
-mkdir -p $OLLAMA_HOME
-chmod -R 777 /app
-chmod -R 777 $OLLAMA_HOME
-
-# Ensure Ollama can write to the models directory
-mkdir -p /config/ollama
-chmod -R 777 /config/ollama
+# No longer using Ollama - using remote vLLM server
+echo "[+] Using remote vLLM server for LLM inference"
+echo "    LLM_SERVICE_URL: ${LLM_SERVICE_URL}"
+echo "    LLM_MODEL: ${LLM_MODEL}"
+echo "    (Using API key for authentication)"
 
 # Start MongoDB service
 echo "[+] Starting MongoDB service..."
@@ -28,9 +24,8 @@ mongod --version
 ps aux | grep mongod
 echo "MongoDB should now be running on localhost:27017"
 
-# Start Ollama
-echo "[+] Starting Ollama..."
-ollama serve &
+# No longer starting Ollama - using remote vLLM server
+echo "[+] Using remote vLLM server - no local LLM server needed"
 sleep 5
 
 # Verify critical packages are installed correctly

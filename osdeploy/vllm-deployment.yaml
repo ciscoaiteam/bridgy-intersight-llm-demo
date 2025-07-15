@@ -1,0 +1,80 @@
+apiVersion: apps.openshift.io/v1
+kind: DeploymentConfig
+metadata:
+  name: vllm-server
+  labels:
+    app: vllm-server
+spec:
+  replicas: 1
+  selector:
+    app: vllm-server
+  strategy:
+    type: Recreate  # Use Recreate since we're dealing with GPU resources
+  template:
+    metadata:
+      labels:
+        app: vllm-server
+    spec:
+      containers:
+      - name: vllm-server
+        image: image-registry.openshift-image-registry.svc:5000/demo1/vllm-server:latest
+        ports:
+        - containerPort: 8000
+          protocol: TCP
+        env:
+        - name: HF_TOKEN
+          valueFrom:
+            secretKeyRef:
+              name: bridgy-secrets
+              key: hf-token
+              optional: true
+        - name: HF_HOME
+          value: "/data/huggingface"
+        - name: TENSOR_PARALLEL_SIZE
+          value: "1"
+        resources:
+          limits:
+            nvidia.com/gpu: 1
+            memory: 16Gi
+            cpu: "4"
+          requests:
+            nvidia.com/gpu: 1
+            memory: 8Gi
+            cpu: "2"
+        volumeMounts:
+        - name: vllm-models
+          mountPath: /data/models
+        - name: vllm-huggingface
+          mountPath: /data/huggingface
+        readinessProbe:
+          httpGet:
+            path: /v1/models
+            port: 8000
+          initialDelaySeconds: 60
+          periodSeconds: 10
+          timeoutSeconds: 5
+        livenessProbe:
+          httpGet:
+            path: /v1/models
+            port: 8000
+          initialDelaySeconds: 120
+          periodSeconds: 20
+          timeoutSeconds: 5
+      volumes:
+      - name: vllm-models
+        persistentVolumeClaim:
+          claimName: vllm-models
+      - name: vllm-huggingface
+        persistentVolumeClaim:
+          claimName: vllm-huggingface
+  triggers:
+  - type: ConfigChange
+  - type: ImageChange
+    imageChangeParams:
+      automatic: true
+      containerNames:
+      - vllm-server
+      from:
+        kind: ImageStreamTag
+        name: vllm-server:latest
+        namespace: demo1

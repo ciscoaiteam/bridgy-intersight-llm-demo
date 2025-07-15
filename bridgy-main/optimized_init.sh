@@ -87,44 +87,11 @@ wait_for_mongodb
 
 # MongoDB connection will be handled by packages from requirements.txt
 
-# 4. Set up and start Ollama
-echo "[+] Setting up Ollama directory structure"
-mkdir -p $OLLAMA_HOME
-chmod -R 777 $OLLAMA_HOME
-
-# Ensure Ollama can write to the models directory
-mkdir -p /tmp/ollama_models
-chmod -R 777 /tmp/ollama_models
-
-# Start Ollama service
-echo "[+] Starting Ollama service"
-ollama serve &
-
-# Wait for Ollama to be ready
-echo "[+] Waiting for Ollama to be ready"
-MAX_RETRIES=30
-COUNT=0
-while ! curl -s http://localhost:11434/api/version &>/dev/null && [ $COUNT -lt $MAX_RETRIES ]; do
-    echo "  Waiting for Ollama service to start..."
-    sleep 2
-    COUNT=$((COUNT + 1))
-done
-
-if [ $COUNT -lt $MAX_RETRIES ]; then
-    echo "[+] Ollama is ready!"
-    
-    # Download the required model
-    echo "[+] Downloading gemma2 model for Ollama (this may take a while)..."
-    ollama pull gemma2:latest --insecure
-    
-    if [ $? -eq 0 ]; then
-        echo "[+] Successfully downloaded gemma2 model"
-    else
-        echo "[!] Warning: Failed to download gemma2 model, the expert router may not function properly"
-    fi
-else
-    echo "[!] Warning: Ollama may not be ready, continuing anyway"
-fi
+# No longer using local Ollama - using remote vLLM server instead
+echo "[+] Using remote vLLM server for LLM inference"
+echo "    LLM_SERVICE_URL: ${LLM_SERVICE_URL}"
+echo "    LLM_MODEL: ${LLM_MODEL}"
+echo "    (Using API key for authentication)"
 
 # 5. Run the import verification script
 echo "[+] Verifying Python imports"

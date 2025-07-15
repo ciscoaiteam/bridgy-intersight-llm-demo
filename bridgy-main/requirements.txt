@@ -48,7 +48,7 @@ langchain==0.3.21
 langchain-community==0.3.20
 langchain-core==0.3.48
 langchain-huggingface>=0.1.0
-langchain-ollama==0.3.0
+# Removed langchain-ollama - using vLLM with OpenAI API instead
 langchain-openai==0.3.10
 langchain-text-splitters==0.3.7
 langsmith==0.3.18
@@ -73,7 +73,7 @@ nvidia-nccl-cu12==2.19.3
 nvidia-nvjitlink-cu12==12.1.105
 nvidia-nvtx-cu12==12.1.105
 numpy==1.26.4
-ollama==0.4.7
+# Removed ollama - using vLLM with OpenAI API instead
 openai==1.68.2
 orjson==3.10.16
 packaging==24.2

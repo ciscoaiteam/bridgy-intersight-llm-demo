@@ -15,8 +15,7 @@ RUN apt-get update && apt-get install -y \
     netcat-openbsd \
     wget
 
-# Install Ollama
-RUN curl -fsSL https://ollama.com/install.sh | sh
+# No longer using Ollama - using remote vLLM server instead
 
 # Set up CUDA environment without full installation
 # This is more compatible with OpenShift and avoids dependency issues
@@ -78,9 +77,10 @@ ENV MONGODB_URI=mongodb://mongodb:27017/bridgy_db
 ENV MONGODB_URL=mongodb://mongodb:27017/bridgy_db
 ENV MONGO_ENABLED=true
 ENV HOME=/tmp
-ENV OLLAMA_HOME=/tmp/.ollama
-ENV OLLAMA_MODELS=/tmp/ollama_models
-ENV PATH="/tmp/.ollama/bin:${PATH}"
+# Using remote vLLM server with OpenAI-compatible API instead of local Ollama
+ENV LLM_SERVICE_URL=http://vllm-server:8000/v1
+ENV LLM_MODEL=gemma-2-9b
+ENV LLM_API_KEY=llm-api-key
 
 # Set the initialization script as the entrypoint
 ENTRYPOINT ["/app/bridgy-main/optimized_init.sh"]

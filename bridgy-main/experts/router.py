@@ -1,4 +1,4 @@
-from langchain_ollama import OllamaLLM  # Updated import
+import os
 from langchain_openai import ChatOpenAI
 from langchain.prompts import ChatPromptTemplate
 from langchain_core.runnables import RunnableSequence
@@ -21,9 +21,11 @@ setup_langsmith()
 class ExpertRouter:
     def __init__(self):
         logger.error("initialize Expert Router")
-        self.llm = OllamaLLM(
-            model="gemma2",  # Using gemma2 model
-            base_url="http://localhost:11434",
+        # Using OpenAI-compatible API for vLLM or remote LLM service
+        self.llm = ChatOpenAI(
+            model_name=os.getenv("LLM_MODEL", "gemma-2-9b"),
+            base_url=os.getenv("LLM_SERVICE_URL", "http://vllm-server:8000/v1"),
+            api_key=os.getenv("LLM_API_KEY", "llm-api-key"),
             temperature=0.0
         )
 

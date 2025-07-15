@@ -1,5 +1,6 @@
-from langchain_ollama import OllamaLLM  # Updated import
-from langchain_openai import ChatOpenAI
+import os
+from langchain_openai import ChatOpenAI  # Using OpenAI-compatible API for vLLM
+
 from langchain.prompts import ChatPromptTemplate
 from langchain_core.runnables import RunnableSequence
 from tools.intersight_api import IntersightAPI
@@ -13,9 +14,10 @@ logger = logging.getLogger(__name__)
 
 class IntersightExpert:
     def __init__(self):
-        self.llm = OllamaLLM(
-            model="gemma2",  # Using local gemma2al model
-            base_url="http://localhost:11434",
+        self.llm = ChatOpenAI(
+            model_name=os.getenv("LLM_MODEL", "gemma-2-9b"),
+            base_url=os.getenv("LLM_SERVICE_URL", "http://vllm-server:8000/v1"),
+            api_key=os.getenv("LLM_API_KEY", "llm-api-key"),
             temperature=0.0
         )
         self.api = IntersightAPI()
