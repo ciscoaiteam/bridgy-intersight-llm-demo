@@ -10,26 +10,34 @@
 
 set -e  # Exit on error
 
-# Get the directory where this script is located
-SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
-PROJECT_ROOT="$( cd "$SCRIPT_DIR/.." && pwd )"
+# Set up paths
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+PROJECT_ROOT="$(dirname "$SCRIPT_DIR")"
 
-# Paths
+# Configuration
+NAMESPACE="demo1"
 ENV_FILE="$PROJECT_ROOT/.env"
 PEM_FILE="$PROJECT_ROOT/bridgy-main/intersight.pem"
 CERT_PATH="$PROJECT_ROOT/bridgy-main/cert.pem"
 KEY_PATH="$PROJECT_ROOT/bridgy-main/key.pem"
 SECRET_NAME="bridgy-secrets"
-OUTPUT_FILE="./bridgy-secrets.yaml"
-BRIDGY_CONFIG="./bridgy-optimized-deployment.yaml"
-MONGODB_CONFIG="./mongodb-deploymentconfig.yaml"
-MONGODB_SERVICE="./mongodb-service.yaml"
-MONGODB_CONFIGMAP="./mongodb-configmap.yaml"
-MONGODB_INIT_CONFIGMAP="./mongodb-init-configmap.yaml"
-VLLM_DEPLOYMENT="./vllm-deployment.yaml"
-VLLM_SERVICE="./vllm-service.yaml"
-VLLM_MODELS_PVC="./vllm-models-persistentvolumeclaim.yaml"
-VLLM_HF_PVC="./vllm-huggingface-persistentvolumeclaim.yaml"
+OUTPUT_FILE="$SCRIPT_DIR/bridgy-secrets.yaml"
+
+# Use simple filenames for YAML resources with SCRIPT_DIR
+BRIDGY_CONFIG="$SCRIPT_DIR/bridgy-optimized-deployment.yaml"
+MONGODB_CONFIG="$SCRIPT_DIR/mongodb-deploymentconfig.yaml"
+MONGODB_SERVICE="$SCRIPT_DIR/mongodb-service.yaml"
+MONGODB_CONFIGMAP="$SCRIPT_DIR/mongodb-configmap.yaml"
+MONGODB_INIT_CONFIGMAP="$SCRIPT_DIR/mongodb-init-configmap.yaml"
+MONGODB_SA="$SCRIPT_DIR/mongodb-serviceaccount.yaml"
+MONGODB_ROLEBINDING="$SCRIPT_DIR/mongodb-rolebinding.yaml"
+BRIDGY_SERVICE="$SCRIPT_DIR/bridgy-main-service.yaml"
+BRIDGY_ROUTE="$SCRIPT_DIR/bridgy-main-route.yaml"
+BRIDGY_NODEPORT="$SCRIPT_DIR/bridgy-main-nodeport-service.yaml"
+VLLM_SERVICE="$SCRIPT_DIR/vllm-service.yaml"
+VLLM_DEPLOYMENT="$SCRIPT_DIR/vllm-deployment.yaml"
+VLLM_MODELS_PVC="$SCRIPT_DIR/vllm-models-persistentvolumeclaim.yaml"
+VLLM_HF_PVC="$SCRIPT_DIR/vllm-huggingface-persistentvolumeclaim.yaml"
 
 # Check if files exist
 if [ ! -f "$ENV_FILE" ]; then
@@ -225,14 +233,19 @@ EOF
 
 # Apply MongoDB resources first
 echo "Applying MongoDB resources..."
-oc apply -f "$(dirname "$0")/$MONGODB_CONFIGMAP"
-oc apply -f "$(dirname "$0")/$MONGODB_INIT_CONFIGMAP"
-oc apply -f "$(dirname "$0")/$MONGODB_SERVICE"
-oc apply -f "$(dirname "$0")/$MONGODB_CONFIG"
+oc apply -f "$MONGODB_CONFIGMAP"
+oc apply -f "$MONGODB_INIT_CONFIGMAP"
+oc apply -f "$MONGODB_SERVICE"
+oc apply -f "$MONGODB_CONFIG"
+
+# Apply MongoDB data PVC
+MONGODB_DATA_PVC="$SCRIPT_DIR/mongodb-data-persistentvolumeclaim.yaml"
+echo "Applying MongoDB data PVC..."
+oc apply -f "$MONGODB_DATA_PVC"
 
 # Wait for MongoDB to start
 echo "Waiting for MongoDB to start..."
-oc rollout status deployment/mongodb --timeout=180s
+oc rollout status dc/mongodb --timeout=180s || echo "MongoDB rollout not completed within timeout, continuing anyway..."
 
 # Check for and apply SSL certificates if they exist
 echo "Checking for SSL certificates..."
@@ -277,8 +290,15 @@ if [ -f "$VLLM_MODELS_PVC" ] && [ -f "$VLLM_HF_PVC" ] && [ -f "$VLLM_SERVICE" ] 
       echo "Found Hugging Face token in .env file. Updating secret..."
       oc patch secret "$SECRET_NAME" --type=merge -p "{\"stringData\":{\"hf-token\":\"$HF_TOKEN\"}}"
     else
-      echo "No Hugging Face token found in .env file. You may need to set it manually."
+      echo "No Hugging Face token found in .env file."
+      echo "WARNING: Hugging Face token is required to download the Gemma 2 model."
+      echo "Please create an .env file with HF_TOKEN=your_token or provide it via the --hf-token parameter."
+      exit 1
     fi
+  else
+    echo "ERROR: .env file not found at $ENV_FILE"
+    echo "Please create an .env file with HF_TOKEN=your_token or provide it via the --hf-token parameter."
+    exit 1
   fi
   
   USE_VLLM=true
@@ -375,7 +395,8 @@ chmod +x "$MAIN_DIR/bridgy-main/optimized_init.sh"
 # Start the build if it doesn't exist
 if ! oc get builds -l buildconfig=bridgy-main | grep -q "bridgy-main-"; then
   echo "Starting new build for bridgy-main from directory $MAIN_DIR..."
-  oc start-build bridgy-main --from-dir="$MAIN_DIR" --wait
+  echo "This may take several minutes. Build logs will be displayed below:"
+  oc start-build bridgy-main --from-dir="$MAIN_DIR" --follow --wait=true
 else
   echo "Build already exists, not starting a new one"
 fi
@@ -417,8 +438,8 @@ if [ "$USE_VLLM" = true ]; then
     exit 1
   fi
   
-  # Create vLLM buildconfig for binary build
-  echo "Creating vllm-server buildconfig..."
+  # Create vLLM buildconfig for binary build with build arg support
+  echo "Creating vllm-server buildconfig with Hugging Face token support..."
   cat <<EOF | oc apply -f -
 apiVersion: build.openshift.io/v1
 kind: BuildConfig
@@ -440,6 +461,12 @@ spec:
     type: Docker
     dockerStrategy:
       dockerfilePath: Dockerfile
+      env:
+        - name: HF_TOKEN
+          value: "${HF_TOKEN}"
+      buildArgs:
+        - name: "HF_TOKEN"
+          value: "${HF_TOKEN}"
   triggers:
     - type: ConfigChange
 EOF
@@ -450,9 +477,14 @@ EOF
     oc create imagestream vllm-server
   fi
 
-  # Start the vLLM build using the binary build directory
+  # Start the vLLM build using the binary build directory and pass HF_TOKEN as env var
+  echo "Preparing vLLM build with Hugging Face authentication..."
   echo "Starting vllm-server build (this may take 15-30 minutes for model download)..."
-  oc start-build vllm-server --from-dir="$VLLM_DIR" --follow --wait=true
+  
+  # Pass the Hugging Face token as an environment variable to the build
+  oc start-build vllm-server --from-dir="$VLLM_DIR" \
+    -e HF_TOKEN="$HF_TOKEN" \
+    --follow --wait=true
   
   # Apply vLLM deployment after image is built
   echo "Applying vLLM deployment..."

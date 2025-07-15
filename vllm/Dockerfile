@@ -48,9 +48,28 @@ ENV HF_HOME=/data/huggingface
 ENV MODEL_NAME="google/gemma-2-9b-it"
 ENV MODEL_PATH=/data/models/gemma-2-9b-it
 
+# Set up token as a build argument (will be passed from the build script)
+# Note: We need to use ARG for the HF_TOKEN during build time to download the model
+# This is secure because: 
+# 1. ARG values don't persist in the final image
+# 2. We don't use ENV to persist the token
+# 3. The token is only used during build time, not runtime
+ARG HF_TOKEN
+
+# Log token status (without revealing it)
+RUN if [ -n "$HF_TOKEN" ]; then \
+        echo "Hugging Face token found in build arguments" \
+    else \
+        echo "No Hugging Face token found in build arguments" \
+    fi
+
 # Download the Gemma 2 model during build
-RUN echo "Downloading model $MODEL_NAME to $MODEL_PATH..." && \
-    python -c "from huggingface_hub import snapshot_download; snapshot_download(repo_id='$MODEL_NAME', local_dir='$MODEL_PATH')"
+RUN echo "Downloading model $MODEL_NAME to $MODEL_PATH with authentication..." && \
+    if [ -z "$HF_TOKEN" ]; then \
+        echo "Error: HF_TOKEN is required to download Gemma 2 model" && \
+        exit 1; \
+    fi && \
+    python -c "from huggingface_hub import snapshot_download; import os; token=os.environ['HF_TOKEN']; snapshot_download(repo_id='$MODEL_NAME', local_dir='$MODEL_PATH', token=token)"
 
 # Create a runtime image
 FROM nvidia/cuda:12.1.0-runtime-ubuntu22.04
@@ -59,7 +78,6 @@ FROM nvidia/cuda:12.1.0-runtime-ubuntu22.04
 ENV DEBIAN_FRONTEND=noninteractive
 ENV PATH="/root/miniconda3/bin:${PATH}"
 ENV HF_HOME="/data/huggingface"
-ENV HF_TOKEN=""
 
 # Install system dependencies
 RUN apt-get update && apt-get install -y \
