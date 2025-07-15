@@ -54,8 +54,17 @@ ENV DEBIAN_FRONTEND=noninteractive
 ENV PATH="/root/miniconda3/bin:${PATH}"
 ENV HF_HOME="/data/huggingface"
 
-# Install system dependencies
-RUN apt-get update && apt-get install -y ca-certificates curl git wget && rm -rf /var/lib/apt/lists/*
+# Install system dependencies including Python
+RUN apt-get update && apt-get install -y ca-certificates curl git wget python3 python3-pip && \
+    ln -sf /usr/bin/python3 /usr/bin/python && \
+    rm -rf /var/lib/apt/lists/*
+
+# Install PyTorch with CUDA support first
+RUN pip3 install --no-cache-dir torch==2.1.2 --index-url https://download.pytorch.org/whl/cu121
+
+# Install vLLM and other requirements
+RUN pip3 install --no-cache-dir transformers==4.37.0 sentencepiece==0.1.99 accelerate==0.25.0
+RUN pip3 install --no-cache-dir vllm==0.3.0
 
 # Install Miniconda
 RUN wget https://repo.anaconda.com/miniconda/Miniconda3-latest-Linux-x86_64.sh -O /tmp/miniconda.sh && bash /tmp/miniconda.sh -b -p /root/miniconda3 && rm /tmp/miniconda.sh
