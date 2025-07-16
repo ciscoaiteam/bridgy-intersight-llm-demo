@@ -15,7 +15,9 @@ RUN apt-get update && \
     wget \
     build-essential \
     gcc \
-    g++ && \
+    g++ \
+    libcuda1 \
+    cuda-cudart-dev-12-1 && \
     ln -sf /usr/bin/python3 /usr/bin/python && \
     rm -rf /var/lib/apt/lists/* && \
     apt-get clean
