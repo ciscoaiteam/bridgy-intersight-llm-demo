@@ -20,7 +20,8 @@ start_vllm() {
   # Set environment variables to fix permission issues
   export TRANSFORMERS_CACHE="/tmp/huggingface_cache"
   export HF_HOME="/tmp/huggingface_home"
-  mkdir -p "$TRANSFORMERS_CACHE" "$HF_HOME"
+  export TRITON_CACHE_DIR="/tmp/triton_cache"
+  mkdir -p "$TRANSFORMERS_CACHE" "$HF_HOME" "$TRITON_CACHE_DIR"
   mkdir -p "$MODEL_PATH"
   
   # Check if model exists and is valid in the selected path

@@ -12,7 +12,10 @@ RUN apt-get update && \
     git \
     ca-certificates \
     curl \
-    wget && \
+    wget \
+    build-essential \
+    gcc \
+    g++ && \
     ln -sf /usr/bin/python3 /usr/bin/python && \
     rm -rf /var/lib/apt/lists/* && \
     apt-get clean
