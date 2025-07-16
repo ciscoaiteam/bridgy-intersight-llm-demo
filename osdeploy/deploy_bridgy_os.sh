@@ -39,51 +39,102 @@ ONLY_FRONTEND=false
 CLEANUP_FIRST=false
 HF_TOKEN_CLI=""
 
-show_help() {
+show_usage() {
     echo "Usage: $0 [OPTIONS]"
-    echo ""
-    echo "Deploy Bridgy ecosystem to OpenShift with optional component selection"
+    echo "Build and Deploy Bridgy with MongoDB and vLLM on OpenShift"
     echo ""
     echo "Options:"
-    echo "  --only-vllm      Deploy only vLLM components (skip MongoDB and Bridgy frontend)"
-    echo "  --only-frontend  Deploy only frontend components (skip vLLM)"
-    echo "  --cleanup        Clean up existing deployments before deploying"
-    echo "  --hf-token TOKEN Hugging Face token for model download"
+    echo "  --only-vllm      Build and deploy only vLLM components (skip MongoDB and Bridgy frontend)"
+    echo "  --only-frontend  Build and deploy only frontend components (skip vLLM)"
+    echo "  --cleanup        Comprehensive cleanup of all existing resources before deploying"
+    echo "  --hf-token TOKEN Hugging Face token for model download and build"
     echo "  --help           Show this help message"
     echo ""
+    echo "Build Process:"
+    echo "  - vLLM: Builds custom CUDA-enabled image with Gemma 2 support"
+    echo "  - Bridgy: Builds optimized frontend with Python dependencies"
+    echo "  - Both builds use OpenShift S2I binary builds for efficiency"
+    echo ""
     echo "Examples:"
-    echo "  $0                           # Full deployment (MongoDB + vLLM + Bridgy)"
-    echo "  $0 --only-frontend           # Deploy only MongoDB + Bridgy (no vLLM)"
-    echo "  $0 --only-vllm               # Deploy only vLLM server"
-    echo "  $0 --hf-token YOUR_TOKEN     # Provide HF token via command line"
+    echo "  $0                          # Build and deploy everything (full stack)"
+    echo "  $0 --only-vllm             # Build and deploy only vLLM server"
+    echo "  $0 --only-frontend         # Build and deploy only MongoDB and Bridgy frontend"
+    echo "  $0 --cleanup               # Clean up and build/deploy everything"
+    echo "  $0 --hf-token hf_xxx       # Build and deploy with specific HF token"
+    echo ""
 }
 
 cleanup_existing_deployments() {
-    echo "🧹 Cleaning up existing deployments..."
+    echo "🧹 Cleaning up existing deployments comprehensively..."
     
-    # Clean up vLLM deployments and pods
+    # Clean up vLLM resources completely
     echo "  🤖 Cleaning up vLLM resources..."
-    oc delete dc vllm-server --ignore-not-found=true
+    oc delete dc vllm-server vllm-server-fixed --ignore-not-found=true
+    oc delete deployments -l app=vllm-server --ignore-not-found=true
+    oc delete rc -l app=vllm-server --ignore-not-found=true
+    oc delete services vllm-server --ignore-not-found=true
+    oc delete routes vllm-server --ignore-not-found=true
     oc delete pods -l app=vllm-server --force --grace-period=0 --ignore-not-found=true
-    
-    # Clean up any old vLLM fixed deployments
-    oc delete dc vllm-server-fixed --ignore-not-found=true
     oc delete pods -l app=vllm-server-fixed --force --grace-period=0 --ignore-not-found=true
     
-    # Clean up Bridgy main deployments (but keep frontend for continuity)
-    echo "  🌉 Cleaning up Bridgy main builds..."
-    oc delete pods -l app=bridgy-main --field-selector=status.phase=Failed --force --grace-period=0 --ignore-not-found=true
-    oc delete pods -l app=bridgy-main --field-selector=status.phase=Error --force --grace-period=0 --ignore-not-found=true
+    # Clean up Bridgy main resources
+    echo "  🌉 Cleaning up Bridgy main resources..."
+    oc delete dc bridgy-main --ignore-not-found=true
+    oc delete deployments -l app=bridgy-main --ignore-not-found=true
+    oc delete rc -l app=bridgy-main --ignore-not-found=true
+    oc delete services bridgy-main bridgy-main-nodeport --ignore-not-found=true
+    oc delete routes bridgy-main --ignore-not-found=true
+    oc delete pods -l app=bridgy-main --force --grace-period=0 --ignore-not-found=true
     
-    # Clean up any pending/stuck builds
-    echo "  🔨 Cleaning up failed builds..."
-    oc get builds --no-headers | grep -E "(Failed|Error|Cancelled)" | awk '{print $1}' | xargs -r oc delete builds --ignore-not-found=true
+    # Clean up MongoDB resources (optional - be careful here)
+    echo "  🗄️ Cleaning up MongoDB resources..."
+    oc delete deployments mongodb --ignore-not-found=true
+    oc delete rc -l app=mongodb --ignore-not-found=true
+    oc delete services mongodb --ignore-not-found=true
+    oc delete pods -l app=mongodb --force --grace-period=0 --ignore-not-found=true
     
-    # Wait a moment for resources to be cleaned up
+    # Clean up builds and related resources comprehensively
+    echo "  🔨 Cleaning up builds and build configs..."
+    oc delete builds --all --ignore-not-found=true
+    oc delete bc bridgy-main vllm-server --ignore-not-found=true
+    
+    # Clean up build-related pods
+    echo "  📦 Cleaning up build pods..."
+    oc delete pods -l openshift.io/build.name --force --grace-period=0 --ignore-not-found=true
+    oc delete pods -l app=bridgy-main-build --force --grace-period=0 --ignore-not-found=true
+    oc delete pods -l app=vllm-server-build --force --grace-period=0 --ignore-not-found=true
+    
+    # Clean up any stuck build-related resources
+    echo "  ⚙️ Cleaning up build secrets and configs..."
+    oc delete secrets -l build.openshift.io/build.name --ignore-not-found=true
+    oc delete configmaps -l build.openshift.io/build.name --ignore-not-found=true
+    
+    # Clean up image streams and tags
+    echo "  📦 Cleaning up image streams and tags..."
+    oc delete is bridgy-main vllm-server --ignore-not-found=true
+    oc delete istag bridgy-main:latest vllm-server:latest --ignore-not-found=true
+    
+    # Clean up any dangling build artifacts
+    echo "  🗺️ Cleaning up build artifacts..."
+    oc delete events --field-selector involvedObject.kind=Build --ignore-not-found=true
+    oc delete events --field-selector involvedObject.kind=BuildConfig --ignore-not-found=true
+    
+    # Clean up any leftover replication controllers
+    echo "  🔄 Cleaning up replication controllers..."
+    oc delete rc --all --ignore-not-found=true
+    
+    # Wait for resources to be cleaned up
     echo "  ⏳ Waiting for cleanup to complete..."
-    sleep 10
+    sleep 15
     
-    echo "✅ Cleanup completed"
+    # Show remaining resources for verification
+    echo "  📋 Remaining resources after cleanup:"
+    echo "    Pods: $(oc get pods --no-headers | wc -l)"
+    echo "    Services: $(oc get services --no-headers | wc -l)"
+    echo "    DeploymentConfigs: $(oc get dc --no-headers 2>/dev/null | wc -l)"
+    echo "    Deployments: $(oc get deployments --no-headers | wc -l)"
+    
+    echo "✅ Comprehensive cleanup completed"
 }
 
 while [[ $# -gt 0 ]]; do
@@ -105,7 +156,7 @@ while [[ $# -gt 0 ]]; do
       shift 2
       ;;
     --help)
-      show_help
+      show_usage
       exit 0
       ;;
     *)
@@ -257,9 +308,75 @@ if [ "$ONLY_VLLM" = false ]; then
   fi
 fi
 
-# Deploy vLLM Server if not in frontend-only mode
+# Build and Deploy vLLM Server if not in frontend-only mode
 if [ "$ONLY_FRONTEND" = false ]; then
-  echo "🤖 Deploying vLLM Server with Gemma 2 support..."
+  echo "🤖 Building and Deploying vLLM Server with Gemma 2 support..."
+  
+  # Ensure HF token is available for vLLM build
+  if [ -z "$HF_TOKEN" ]; then
+    echo "❌ ERROR: Hugging Face token is required for vLLM deployment"
+    echo "Please provide HF_TOKEN via --hf-token parameter or in .env file"
+    exit 1
+  fi
+  
+  # Build vLLM server image
+  echo "🔨 Building vLLM Server image..."
+  
+  # Delete existing vLLM buildconfig to ensure we're using the latest
+  if oc get buildconfig vllm-server &> /dev/null; then
+    echo "Deleting existing vLLM buildconfig..."
+    oc delete buildconfig vllm-server
+  fi
+  
+  # Create vLLM buildconfig
+  echo "🔨 Creating vLLM buildconfig..."
+  cat <<EOF | oc apply -f -
+apiVersion: build.openshift.io/v1
+kind: BuildConfig
+metadata:
+  name: vllm-server
+  labels:
+    app: vllm-server
+spec:
+  source:
+    type: Binary
+  strategy:
+    type: Docker
+    dockerStrategy:
+      dockerfilePath: Dockerfile
+      buildArgs:
+      - name: HF_TOKEN
+        value: "$HF_TOKEN"
+  output:
+    to:
+      kind: ImageStreamTag
+      name: vllm-server:latest
+  triggers:
+  - type: ConfigChange
+EOF
+  
+  # Create vLLM imagestream if it doesn't exist
+  if ! oc get imagestream vllm-server &> /dev/null; then
+    echo "📦 Creating ImageStream for vLLM server..."
+    oc create imagestream vllm-server
+  fi
+  
+  # Start the vLLM build
+  echo "🔨 Starting vLLM build..."
+  echo "Preparing vLLM source for build..."
+  cd "$PROJECT_ROOT/vllm"
+  
+  # Make sure scripts are executable
+  chmod +x run_vllm_server.sh 2>/dev/null || true
+  
+  # Start binary build for vLLM
+  echo "Starting vLLM build (this may take 10-15 minutes)..."
+  oc start-build vllm-server --from-dir=. --follow --wait
+  
+  echo "✅ vLLM build completed successfully!"
+  
+  # Return to osdeploy directory
+  cd "$PROJECT_ROOT/osdeploy"
   
   # Check if the consolidated vLLM deployment file exists
   if [ -f "$VLLM_COMPLETE_DEPLOYMENT" ]; then
@@ -303,9 +420,12 @@ else
   echo "⚙️ Skipping vLLM deployment (frontend-only mode)"
 fi
 
-# Deploy Bridgy frontend if not in vLLM-only mode
+# Build and Deploy Bridgy frontend if not in vLLM-only mode
 if [ "$ONLY_VLLM" = false ]; then
-  echo "🌐 Deploying Bridgy frontend..."
+  echo "🌐 Building and Deploying Bridgy frontend..."
+  
+  # Build Bridgy frontend image first
+  echo "🔨 Building Bridgy frontend image..."
   
   # Apply the Bridgy configuration
   echo "🚀 Applying Bridgy optimized configuration..."
@@ -317,28 +437,10 @@ if [ "$ONLY_VLLM" = false ]; then
     oc apply -f "$BRIDGY_NODEPORT"
   fi
 
-  # Clean up any failed builds
-  echo "🧹 Cleaning up any previous failed builds..."
-  FAILED_BUILDS=$(oc get builds -l buildconfig=bridgy-main --no-headers | grep -E "Failed|Error|Cancelled" | awk '{print $1}' || true)
-  if [ -n "$FAILED_BUILDS" ]; then
-    echo "Found failed builds to clean up: $FAILED_BUILDS"
-    for build in $FAILED_BUILDS; do
-      safe_execute oc delete build $build
-    done
-  fi
-
-  # Clean up build pods
-  BUILD_PODS=$(oc get pods -l buildconfig=bridgy-main --no-headers | awk '{print $1}' || true)
-  if [ -n "$BUILD_PODS" ]; then
-    echo "Cleaning up build pods: $BUILD_PODS"
-    for pod in $BUILD_PODS; do
-      safe_execute oc delete pod $pod
-    done
-  fi
-
   # Delete existing buildconfig to ensure we're using the latest
   if oc get buildconfig bridgy-main &> /dev/null; then
-    safe_execute oc delete buildconfig bridgy-main
+    echo "Deleting existing bridgy-main buildconfig..."
+    oc delete buildconfig bridgy-main
   fi
 
   # Create buildconfig
@@ -380,7 +482,13 @@ EOF
   chmod +x verify_imports.py optimized_init.sh 2>/dev/null || true
   
   # Start binary build
+  echo "Starting Bridgy build (this may take 5-10 minutes)..."
   oc start-build bridgy-main --from-dir=. --follow --wait
+  
+  echo "✅ Bridgy build completed successfully!"
+  
+  # Return to osdeploy directory
+  cd "$PROJECT_ROOT/osdeploy"
   
   echo "⏳ Waiting for deployment to complete..."
   oc rollout status dc/bridgy-main --timeout=300s

@@ -21,7 +21,7 @@ RUN apt-get update && apt-get install -y \
 WORKDIR /app
 
 # Copy requirements
-COPY ./bridgy-main/requirements.txt /app/requirements.txt
+COPY ./requirements.txt /app/requirements.txt
 
 # Install Python packages
 RUN pip install --no-cache-dir -r /app/requirements.txt
@@ -29,12 +29,12 @@ RUN pip install --no-cache-dir -r /app/requirements.txt
 # Use versions from requirements.txt only
 
 # Copy application code
-COPY ./bridgy-main /app/bridgy-main
+COPY . /app/bridgy-main
 
 # Copy our external script files
-COPY ./bridgy-main/verify_imports.py /app/bridgy-main/
-COPY ./bridgy-main/optimized_init.sh /app/bridgy-main/
-COPY ./bridgy-main/.env.template /app/bridgy-main/
+COPY ./verify_imports.py /app/bridgy-main/
+COPY ./optimized_init.sh /app/bridgy-main/
+COPY ./.env.template /app/bridgy-main/
 
 # SSL certificates are already in the bridgy-main directory and will be copied with the app code
 
