@@ -6,6 +6,7 @@ metadata:
     app: vllm-server
 spec:
   accessModes:
+    - ReadWriteMany
     - ReadWriteOnce
   resources:
     requests:

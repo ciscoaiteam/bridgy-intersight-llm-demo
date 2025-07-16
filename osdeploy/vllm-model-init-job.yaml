@@ -1,0 +1,123 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: vllm-model-init
+  labels:
+    app: vllm-server
+spec:
+  backoffLimit: 2
+  activeDeadlineSeconds: 3600  # 1 hour timeout
+  template:
+    metadata:
+      labels:
+        app: vllm-server
+    spec:
+      serviceAccountName: vllm-sa
+      restartPolicy: Never
+      # Use security context that complies with OpenShift SCC restrictions
+      securityContext:
+        runAsUser: 1000800000
+        fsGroup: 1000800000
+        fsGroupChangePolicy: "OnRootMismatch"
+      containers:
+      - name: model-init
+        image: image-registry.openshift-image-registry.svc:5000/demo1/vllm-server:latest
+        command: ["/bin/bash"]
+        args:
+          - "-c"
+          - |
+            echo "Starting model initialization job..."
+            MODEL_NAME="google/gemma-2-9b-it"
+            MODEL_PATH="/data/models/gemma-2-9b-it"
+            
+            echo "Setting up PVC mount directories..."
+            # Create directories with appropriate permissions
+            mkdir -p /data/models /data/huggingface
+            # Non-root users can't chown, but they can set group permissions
+            chmod -R 775 /data
+            
+            mkdir -p "$MODEL_PATH"
+            echo "Created model directory $MODEL_PATH with permissions:"
+            ls -la /data/models
+            
+            # Check if model already exists
+            if [ -f "$MODEL_PATH/tokenizer.model" ] && [ -f "$MODEL_PATH/config.json" ]; then
+              echo "Model already exists in $MODEL_PATH, skipping download"
+              ls -la "$MODEL_PATH"
+              echo "Ensuring permissions are correct..."
+              # Can't use chown as non-root
+              chmod -R 775 "$MODEL_PATH"
+              echo "Permissions fixed. Current permissions:"
+              ls -la "$MODEL_PATH"
+              exit 0
+            fi
+            
+            echo "Model not found or incomplete. Will download."
+            
+            # Set up Python environment with proper permissions
+            export TRANSFORMERS_CACHE="/data/huggingface/cache"
+            export HF_HOME="/data/huggingface"
+            mkdir -p "$TRANSFORMERS_CACHE" "$HF_HOME"
+            # Use chmod only as we can't use chown as non-root
+            chmod -R 775 /data/huggingface
+            
+            # Download the model
+            echo "Downloading model $MODEL_NAME to $MODEL_PATH"
+            python3 -c "
+            from huggingface_hub import snapshot_download
+            import os
+
+            try:
+                token = os.environ['HF_TOKEN']
+                snapshot_download(repo_id='$MODEL_NAME', local_dir='$MODEL_PATH', token=token)
+                print('Model download successful!')
+            except Exception as e:
+                print(f'Error downloading model: {e}')
+                exit(1)
+            "
+            
+            # Set permissions after download
+            echo "Setting final permissions on model directory..."
+            chmod -R 775 "$MODEL_PATH"
+            
+            # Double check the model directory
+            echo "Model initialization complete. Contents of model directory:"
+            ls -la "$MODEL_PATH"
+            
+            # Verify permissions on parent directories
+            echo "Permissions on parent directories:"
+            ls -la /data
+            ls -la /data/models
+            
+            # Simple write test using current user
+            echo "Testing write access with current user:"
+            touch "$MODEL_PATH/.write_test" && echo "Success!" || echo "Failed!"
+            rm -f "$MODEL_PATH/.write_test"
+            
+            echo "Model initialization job completed successfully."
+        env:
+        - name: HF_TOKEN
+          valueFrom:
+            secretKeyRef:
+              name: bridgy-secrets
+              key: hf-token
+              optional: true
+        volumeMounts:
+        - name: vllm-models
+          mountPath: "/data/models"
+        - name: vllm-huggingface
+          mountPath: "/data/huggingface"
+        resources:
+          limits:
+            memory: "8Gi"
+            cpu: "2"
+          requests:
+            memory: "4Gi"
+            cpu: "1"
+      volumes:
+      - name: vllm-models
+        persistentVolumeClaim:
+          claimName: vllm-models
+      - name: vllm-huggingface
+        persistentVolumeClaim:
+          claimName: vllm-huggingface

@@ -1,0 +1,105 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: vllm-library-update
+  labels:
+    app: vllm-server
+spec:
+  backoffLimit: 2
+  activeDeadlineSeconds: 1800  # 30 minute timeout
+  template:
+    metadata:
+      labels:
+        app: vllm-server
+    spec:
+      serviceAccountName: vllm-sa
+      restartPolicy: Never
+      securityContext:
+        runAsUser: 1000800000
+        fsGroup: 1000800000
+        fsGroupChangePolicy: "OnRootMismatch"
+      containers:
+      - name: library-update
+        image: image-registry.openshift-image-registry.svc:5000/demo1/vllm-server:latest
+        command: ["bash", "-c"]
+        args:
+        - |
+          echo "Starting vLLM library update job..."
+          
+          # Check the current transformers version
+          echo "Current transformers version:"
+          python -c "import transformers; print(transformers.__version__)"
+          
+          # Install updated packages
+          echo "Installing updated packages..."
+          pip install --no-cache-dir "numpy<2.0.0" "transformers>=4.37.0" "torch>=2.2.0" "vllm>=0.3.0" --upgrade
+          
+          echo "Updated package versions:"
+          python -c "import numpy; print('NumPy:', numpy.__version__)"
+          python -c "import transformers; print('Transformers:', transformers.__version__)"
+          python -c "import torch; print('PyTorch:', torch.__version__)"
+          python -c "import vllm; print('vLLM:', vllm.__version__)"
+          
+          # Create directories for model download
+          echo "Creating directories for model..."
+          mkdir -p /tmp/updated_packages
+          mkdir -p /tmp/models/gemma-2-9b-it
+          
+          # Download a compatible model (Llama 2 instead of Gemma 2)
+          echo "Downloading Gemma 2 model..."
+          python -c '
+          import os
+          from huggingface_hub import snapshot_download
+          
+          # Use the HF token if available
+          hf_token = os.environ.get("HF_TOKEN")
+          
+          # Download Gemma 2 model
+          snapshot_download(
+              repo_id="google/gemma-2-9b-it",
+              local_dir="/tmp/models/gemma-2-9b-it",
+              token=hf_token,
+              ignore_patterns=["*.pt", "*.bin"]
+          )
+          
+          print("Model download complete!")
+          '
+          
+          # Copy the updated Python packages to a persistent location
+          echo "Copying updated packages to persistent storage..."
+          cp -r /usr/local/lib/python3.10/dist-packages/* /tmp/updated_packages/
+          
+          echo "Library update job completed."
+        env:
+        - name: HF_TOKEN
+          valueFrom:
+            secretKeyRef:
+              name: bridgy-secrets
+              key: hf-token
+              optional: true
+        - name: HF_HOME
+          value: "/data/huggingface"
+        volumeMounts:
+        - name: vllm-huggingface
+          mountPath: "/data/huggingface"
+        - name: vllm-models
+          mountPath: "/data/models"
+        - name: vllm-tmp-models
+          mountPath: "/tmp/models"
+        - name: vllm-updated-packages
+          mountPath: "/tmp/updated_packages"
+      volumes:
+      - name: vllm-models
+        persistentVolumeClaim:
+          claimName: vllm-models
+      - name: vllm-huggingface
+        persistentVolumeClaim:
+          claimName: vllm-huggingface
+      - name: vllm-tmp-models
+        emptyDir:
+          medium: ""
+          sizeLimit: "30Gi"
+      - name: vllm-updated-packages
+        emptyDir:
+          medium: ""
+          sizeLimit: "2Gi"

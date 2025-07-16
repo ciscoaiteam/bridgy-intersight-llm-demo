@@ -1,0 +1,72 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: vllm-pvc-fix
+  labels:
+    app: vllm-server
+spec:
+  backoffLimit: 2
+  activeDeadlineSeconds: 600  # 10 minute timeout
+  template:
+    metadata:
+      labels:
+        app: vllm-server
+    spec:
+      serviceAccountName: vllm-sa
+      restartPolicy: Never
+      # Use security context that complies with OpenShift SCC restrictions
+      securityContext:
+        runAsUser: 1000800000
+        fsGroup: 1000800000
+        fsGroupChangePolicy: "OnRootMismatch"
+      containers:
+      - name: pvc-fix
+        image: registry.redhat.io/ubi8/ubi-minimal:latest
+        command: ["bash", "-c"]
+        args:
+        - |
+          echo "Starting PVC permissions fix job..."
+          
+          # Try to make directories with appropriate permissions
+          echo "Creating directories with appropriate permissions..."
+          mkdir -p /data/models /data/huggingface
+          
+          # Set permissions for group access (non-root can't use 777)
+          echo "Setting permissions on directories (max permissions for non-root)..."
+          chmod -R 775 /data/models
+          chmod -R 775 /data/huggingface
+          
+          echo "Current permissions on /data:"
+          ls -la /data
+          
+          echo "Current permissions on model directory:"
+          ls -la /data/models
+          
+          echo "Current permissions on huggingface directory:"
+          ls -la /data/huggingface
+          
+          echo "Creating test files with current user..."
+          touch /data/models/test-write-access && echo "Success: Created test file in models dir" || echo "Failed: Could not write to models dir"
+          touch /data/huggingface/test-write-access && echo "Success: Created test file in huggingface dir" || echo "Failed: Could not write to huggingface dir"
+          
+          # Create a model subdirectory with appropriate permissions
+          echo "Creating the Gemma model directory with appropriate permissions..."
+          mkdir -p /data/models/gemma-2-9b-it
+          chmod -R 775 /data/models/gemma-2-9b-it
+          
+          echo "Gemma model directory permissions:"
+          ls -la /data/models/gemma-2-9b-it
+          
+          echo "PVC permissions fix job completed."
+        volumeMounts:
+        - name: vllm-models
+          mountPath: "/data/models"
+        - name: vllm-huggingface
+          mountPath: "/data/huggingface"
+      volumes:
+      - name: vllm-models
+        persistentVolumeClaim:
+          claimName: vllm-models
+      - name: vllm-huggingface
+        persistentVolumeClaim:
+          claimName: vllm-huggingface

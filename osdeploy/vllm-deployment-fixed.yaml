@@ -1,13 +1,13 @@
 apiVersion: apps.openshift.io/v1
 kind: DeploymentConfig
 metadata:
-  name: vllm-server
+  name: vllm-server-fixed
   labels:
-    app: vllm-server
+    app: vllm-server-fixed
 spec:
   replicas: 1
   selector:
-    app: vllm-server
+    app: vllm-server-fixed
   strategy:
     type: Recreate
     recreateParams:
@@ -15,11 +15,10 @@ spec:
   template:
     metadata:
       labels:
-        app: vllm-server
+        app: vllm-server-fixed
     spec:
       serviceAccountName: vllm-sa
-      # Keep the security context as non-root but with proper group permissions
-      # The init job will have already set permissions correctly
+      # OpenShift-compliant security context
       securityContext:
         runAsUser: 1000800000
         fsGroup: 1000800000
@@ -27,9 +26,6 @@ spec:
       containers:
       - name: vllm-server
         image: image-registry.openshift-image-registry.svc:5000/demo1/vllm-server:latest
-        ports:
-        - containerPort: 8000
-          protocol: TCP
         env:
         - name: HF_TOKEN
           valueFrom:
@@ -38,17 +34,32 @@ spec:
               key: hf-token
               optional: true
         - name: HF_HOME
-          value: "/data/huggingface"
+          value: "/tmp/huggingface"
+        - name: TRANSFORMERS_CACHE
+          value: "/tmp/huggingface_cache"
         - name: TENSOR_PARALLEL_SIZE
           value: "1"
-        livenessProbe:
-          httpGet:
-            path: /v1/models
-            port: 8000
-          initialDelaySeconds: 300
-          periodSeconds: 30
-          timeoutSeconds: 10
-          failureThreshold: 6
+        ports:
+        - containerPort: 8000
+          protocol: TCP
+        resources:
+          limits:
+            cpu: "4"
+            memory: "16Gi"
+            nvidia.com/gpu: 1
+          requests:
+            cpu: "2"
+            memory: "8Gi"
+            nvidia.com/gpu: 1
+        volumeMounts:
+        # Mount the emptyDir as our main storage to avoid permission issues
+        - mountPath: "/tmp/models"
+          name: vllm-tmp-models
+        # Only keep these mounts for potential future use, but don't rely on them
+        - mountPath: "/data/models"
+          name: vllm-models
+        - mountPath: "/data/huggingface"
+          name: vllm-huggingface
         readinessProbe:
           httpGet:
             path: /v1/models
@@ -57,40 +68,33 @@ spec:
           periodSeconds: 20
           timeoutSeconds: 10
           failureThreshold: 6
+        livenessProbe:
+          httpGet:
+            path: /v1/models
+            port: 8000
+          initialDelaySeconds: 300
+          periodSeconds: 30
+          timeoutSeconds: 10
+          failureThreshold: 6
         startupProbe:
           httpGet:
             path: /v1/models
             port: 8000
-          failureThreshold: 30
           periodSeconds: 30
           timeoutSeconds: 10
-        resources:
-          limits:
-            memory: "16Gi"
-            cpu: "4"
-            nvidia.com/gpu: 1
-          requests:
-            memory: "8Gi"
-            cpu: "2"
-            nvidia.com/gpu: 1
-        volumeMounts:
-        - name: vllm-models
-          mountPath: "/data/models"
-        - name: vllm-huggingface
-          mountPath: "/data/huggingface"
-        - name: vllm-tmp-models
-          mountPath: "/tmp/models"
+          failureThreshold: 30
       volumes:
+      # Primary model storage using emptyDir (writable)
+      - name: vllm-tmp-models
+        emptyDir:
+          sizeLimit: "30Gi"
+      # Keep these volumes for potential future use
       - name: vllm-models
         persistentVolumeClaim:
           claimName: vllm-models
       - name: vllm-huggingface
         persistentVolumeClaim:
           claimName: vllm-huggingface
-      - name: vllm-tmp-models
-        emptyDir:
-          medium: "" # Uses node's disk storage
-          sizeLimit: "30Gi" # Adjust size based on model requirements
   triggers:
   - type: ConfigChange
   - type: ImageChange
@@ -102,3 +106,19 @@ spec:
         kind: ImageStreamTag
         name: vllm-server:latest
         namespace: demo1
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: vllm-server-fixed
+  labels:
+    app: vllm-server-fixed
+spec:
+  ports:
+  - port: 8000
+    targetPort: 8000
+    protocol: TCP
+    name: http
+  selector:
+    app: vllm-server-fixed
+  type: ClusterIP
