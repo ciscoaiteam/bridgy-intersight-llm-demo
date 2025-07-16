@@ -9,6 +9,7 @@ RUN apt-get update && \
     apt-get install -y --no-install-recommends \
     python3 \
     python3-pip \
+    python3-dev \
     git \
     ca-certificates \
     curl \
@@ -16,9 +17,11 @@ RUN apt-get update && \
     build-essential \
     gcc \
     g++ \
-    libcuda1 \
     cuda-cudart-dev-12-1 && \
     ln -sf /usr/bin/python3 /usr/bin/python && \
+    mkdir -p /usr/lib/x86_64-linux-gnu && \
+    ln -sf /usr/local/cuda/lib64/stubs/libcuda.so /usr/lib/x86_64-linux-gnu/libcuda.so && \
+    ln -sf /usr/local/cuda/lib64/stubs/libcuda.so /usr/lib/x86_64-linux-gnu/libcuda.so.1 && \
     rm -rf /var/lib/apt/lists/* && \
     apt-get clean
 

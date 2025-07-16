@@ -1,8 +1,9 @@
 #!/bin/bash
 
-# Bridgy OpenShift Deployment Script
-# This script handles the complete deployment of Bridgy to OpenShift:
+# Bridgy Complete OpenShift Deployment Script
+# This script handles the complete deployment of Bridgy ecosystem to OpenShift:
 # - Creates secrets from .env and intersight.pem files
+# - Deploys vLLM server with Gemma 2 support and GPU acceleration
 # - Applies MongoDB resources separately (ConfigMap, Service, Deployment)
 # - Applies Bridgy configuration that connects to the separate MongoDB
 # - Starts build for bridgy-main using the optimized Dockerfile
@@ -18,12 +19,10 @@ PROJECT_ROOT="$(dirname "$SCRIPT_DIR")"
 NAMESPACE="demo1"
 ENV_FILE="$PROJECT_ROOT/.env"
 PEM_FILE="$PROJECT_ROOT/bridgy-main/intersight.pem"
-CERT_PATH="$PROJECT_ROOT/bridgy-main/cert.pem"
-KEY_PATH="$PROJECT_ROOT/bridgy-main/key.pem"
 SECRET_NAME="bridgy-secrets"
 OUTPUT_FILE="$SCRIPT_DIR/bridgy-secrets.yaml"
 
-# Use simple filenames for YAML resources with SCRIPT_DIR
+# Deployment files
 BRIDGY_CONFIG="$SCRIPT_DIR/bridgy-optimized-deployment.yaml"
 MONGODB_CONFIG="$SCRIPT_DIR/mongodb-deploymentconfig.yaml"
 MONGODB_SERVICE="$SCRIPT_DIR/mongodb-service.yaml"
@@ -31,325 +30,320 @@ MONGODB_CONFIGMAP="$SCRIPT_DIR/mongodb-configmap.yaml"
 MONGODB_INIT_CONFIGMAP="$SCRIPT_DIR/mongodb-init-configmap.yaml"
 MONGODB_SA="$SCRIPT_DIR/mongodb-serviceaccount.yaml"
 MONGODB_ROLEBINDING="$SCRIPT_DIR/mongodb-rolebinding.yaml"
-BRIDGY_SERVICE="$SCRIPT_DIR/bridgy-main-service.yaml"
-BRIDGY_ROUTE="$SCRIPT_DIR/bridgy-main-route.yaml"
 BRIDGY_NODEPORT="$SCRIPT_DIR/bridgy-main-nodeport-service.yaml"
-VLLM_SERVICE="$SCRIPT_DIR/vllm-service.yaml"
-VLLM_DEPLOYMENT="$SCRIPT_DIR/vllm-deployment.yaml"
-VLLM_MODELS_PVC="$SCRIPT_DIR/vllm-models-persistentvolumeclaim.yaml"
-VLLM_HF_PVC="$SCRIPT_DIR/vllm-huggingface-persistentvolumeclaim.yaml"
+VLLM_COMPLETE_DEPLOYMENT="$SCRIPT_DIR/vllm-complete-deployment.yaml"
 
-# Check if files exist
-if [ ! -f "$ENV_FILE" ]; then
-  echo "Error: .env file not found at $ENV_FILE"
-  exit 1
+# Parse command-line options
+ONLY_VLLM=false
+ONLY_FRONTEND=false
+CLEANUP_FIRST=false
+HF_TOKEN_CLI=""
+
+show_help() {
+    echo "Usage: $0 [OPTIONS]"
+    echo ""
+    echo "Deploy Bridgy ecosystem to OpenShift with optional component selection"
+    echo ""
+    echo "Options:"
+    echo "  --only-vllm      Deploy only vLLM components (skip MongoDB and Bridgy frontend)"
+    echo "  --only-frontend  Deploy only frontend components (skip vLLM)"
+    echo "  --cleanup        Clean up existing deployments before deploying"
+    echo "  --hf-token TOKEN Hugging Face token for model download"
+    echo "  --help           Show this help message"
+    echo ""
+    echo "Examples:"
+    echo "  $0                           # Full deployment (MongoDB + vLLM + Bridgy)"
+    echo "  $0 --only-frontend           # Deploy only MongoDB + Bridgy (no vLLM)"
+    echo "  $0 --only-vllm               # Deploy only vLLM server"
+    echo "  $0 --hf-token YOUR_TOKEN     # Provide HF token via command line"
+}
+
+cleanup_existing_deployments() {
+    echo "🧹 Cleaning up existing deployments..."
+    
+    # Clean up vLLM deployments and pods
+    echo "  🤖 Cleaning up vLLM resources..."
+    oc delete dc vllm-server --ignore-not-found=true
+    oc delete pods -l app=vllm-server --force --grace-period=0 --ignore-not-found=true
+    
+    # Clean up any old vLLM fixed deployments
+    oc delete dc vllm-server-fixed --ignore-not-found=true
+    oc delete pods -l app=vllm-server-fixed --force --grace-period=0 --ignore-not-found=true
+    
+    # Clean up Bridgy main deployments (but keep frontend for continuity)
+    echo "  🌉 Cleaning up Bridgy main builds..."
+    oc delete pods -l app=bridgy-main --field-selector=status.phase=Failed --force --grace-period=0 --ignore-not-found=true
+    oc delete pods -l app=bridgy-main --field-selector=status.phase=Error --force --grace-period=0 --ignore-not-found=true
+    
+    # Clean up any pending/stuck builds
+    echo "  🔨 Cleaning up failed builds..."
+    oc get builds --no-headers | grep -E "(Failed|Error|Cancelled)" | awk '{print $1}' | xargs -r oc delete builds --ignore-not-found=true
+    
+    # Wait a moment for resources to be cleaned up
+    echo "  ⏳ Waiting for cleanup to complete..."
+    sleep 10
+    
+    echo "✅ Cleanup completed"
+}
+
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --only-vllm)
+      ONLY_VLLM=true
+      shift
+      ;;
+    --only-frontend)
+      ONLY_FRONTEND=true
+      shift
+      ;;
+    --cleanup)
+      CLEANUP_FIRST=true
+      shift
+      ;;
+    --hf-token)
+      HF_TOKEN_CLI="$2"
+      shift 2
+      ;;
+    --help)
+      show_help
+      exit 0
+      ;;
+    *)
+      echo "❌ Unknown option: $1"
+      echo "Use --help for usage information"
+      exit 1
+      ;;
+  esac
+done
+
+# Print deployment mode
+if [ "$ONLY_VLLM" = true ]; then
+  echo "🚀 Running in vLLM-only mode - will only deploy vLLM components"
+elif [ "$ONLY_FRONTEND" = true ]; then
+  echo "🚀 Running in frontend-only mode - will only deploy frontend components"
+else
+  echo "🚀 Running in full deployment mode - deploying all components"
 fi
 
-if [ ! -f "$PEM_FILE" ]; then
-  echo "Error: intersight.pem file not found at $PEM_FILE"
-  exit 1
-fi
-
-if [ ! -f "$BRIDGY_CONFIG" ]; then
-  echo "Error: Bridgy configuration file not found at $BRIDGY_CONFIG"
-  exit 1
-fi
-
-# Start creating the secret YAML file
-cat > "$OUTPUT_FILE" << EOL
-apiVersion: v1
-kind: Secret
-metadata:
-  name: $SECRET_NAME
-  labels:
-    app: bridgy
-type: Opaque
-stringData:
-EOL
+# Function to safely execute commands with error handling
+safe_execute() {
+  echo "$ $@"
+  "$@" || echo "⚠️ Command failed with exit code $? (continuing anyway)"
+}
 
 # Check OpenShift login status
-echo "Checking OpenShift login status..."
-oc whoami &> /dev/null
-if [ $? -ne 0 ]; then
-  echo "Error: You are not logged into OpenShift. Please log in first using 'oc login'."
+echo "🔍 Checking OpenShift login status..."
+if ! oc whoami &> /dev/null; then
+  echo "❌ Error: You are not logged into OpenShift. Please log in first using 'oc login'."
   exit 1
 fi
 
 # Check if current project is set
 CURRENT_PROJECT=$(oc project -q 2>/dev/null)
 if [ -z "$CURRENT_PROJECT" ]; then
-  echo "Error: No OpenShift project is selected. Please select a project with 'oc project <project-name>'."
+  echo "❌ Error: No OpenShift project is selected. Please select a project with 'oc project <project-name>'."
   exit 1
 fi
-echo "Using project: $CURRENT_PROJECT"
+echo "✅ Using project: $CURRENT_PROJECT"
 
-# Cleanup old bridgy-main resources
-echo "Cleaning up old bridgy-main deployments, builds, and failed pods..."
-
-# Function to safely execute commands with error handling
-safe_execute() {
-  echo "$ $@"
-  "$@" || echo "Command failed with exit code $? (continuing anyway)"
-}
-
-# First, let's get the current active deployment
-CURRENT_DC=$(oc get dc bridgy-main -o jsonpath='{.status.latestVersion}' 2>/dev/null || echo "0")
-echo "Current active deployment is: bridgy-main-$CURRENT_DC"
-
-# Clean up old replication controllers (which control the deployments)
-echo "Removing old bridgy-main replication controllers..."
-OLD_RCS=$(oc get rc -l app=bridgy-main | grep -v "NAME" | grep -v "bridgy-main-$CURRENT_DC" | awk '{print $1}' || true)
-if [ -n "$OLD_RCS" ]; then
-  echo "Found old replication controllers to clean up:"
-  for rc in $OLD_RCS; do
-    echo "Deleting RC: $rc"
-    safe_execute oc delete rc $rc
-  done
-else
-  echo "No old replication controllers found"
+# Clean up existing deployments if requested
+if [ "$CLEANUP_FIRST" = true ]; then
+  cleanup_existing_deployments
 fi
 
-# Clean up failed or completed bridgy-main deployment pods
-echo "Removing old bridgy-main deployment pods..."
-DEPLOY_PODS=$(oc get pods | grep "bridgy-main-.*-deploy" | grep -E "Completed|Error" | awk '{print $1}' || true)
-if [ -n "$DEPLOY_PODS" ]; then
-  echo "Found deployment pods to clean up:"
-  for pod in $DEPLOY_PODS; do
-    echo "Deleting deployment pod: $pod"
-    safe_execute oc delete pod $pod --force --grace-period=0
-  done
-else
-  echo "No old deployment pods found"
-fi
-
-# Clean up pods in CrashLoopBackOff state
-echo "Removing bridgy-main pods in CrashLoopBackOff state..."
-CRASHED_PODS=$(oc get pods | grep -E "bridgy-main" | grep -E "CrashLoopBackOff|Error|Completed" | grep -v "deploy" | grep -v "build" | awk '{print $1}' || true)
-if [ -n "$CRASHED_PODS" ]; then
-  echo "Found pods in problem state:"
-  for pod in $CRASHED_PODS; do
-    echo "Deleting problem pod: $pod"
-    safe_execute oc delete pod $pod --force --grace-period=0
-  done
-else
-  echo "No bridgy-main pods in problem state found"
-fi
-
-# Clean up any orphaned deployments
-echo "Cleaning up orphaned deployments..."
-ORPHANED_DEPLOYMENTS=$(oc get deployments -l app=bridgy-main 2>/dev/null | grep -v "NAME" | awk '{print $1}' || true)
-if [ -n "$ORPHANED_DEPLOYMENTS" ]; then
-  echo "Found orphaned deployments:"
-  for dep in $ORPHANED_DEPLOYMENTS; do
-    echo "Deleting deployment: $dep"
-    safe_execute oc delete deployment $dep
-  done
-else
-  echo "No orphaned deployments found"
-fi
-
-# Clean up old bridgy-main builds
-echo "Removing old bridgy-main builds..."
-# Keep the latest build, delete older ones
-OLD_BUILDS=$(oc get builds -l buildconfig=bridgy-main | grep -v "NAME" | sort -rn | tail -n +2 | awk '{print $1}' || true)
-if [ -n "$OLD_BUILDS" ]; then
-  echo "Found old builds to clean up: $OLD_BUILDS"
-  for build in $OLD_BUILDS; do
-    safe_execute oc delete build $build
-  done
-else
-  echo "No old builds found"
-fi
-
-# Parse .env file and add entries to the secret
-echo "Adding environment variables from .env file..."
-while IFS= read -r line || [[ -n "$line" ]]; do
-  # Skip comments and empty lines
-  if [[ "$line" =~ ^[[:space:]]*# ]] || [[ -z "${line// }" ]]; then
-    continue
-  fi
-
-  # Extract key and value (handling both KEY=value and KEY="value" formats)
-  if [[ "$line" =~ ^([^=]+)=(.*)$ ]]; then
-    key="${BASH_REMATCH[1]}"
-    value="${BASH_REMATCH[2]}"
-
-    # Remove quotes if present
-    value="${value%\"}"
-    value="${value#\"}"
-    value="${value%\'}"
-    value="${value#\'}"
-
-    # Convert to kebab-case for secret keys
-    secret_key=$(echo "$key" | tr '[:upper:]' '[:lower:]' | tr '_' '-')
-    
-    # Add to YAML with proper indentation
-    echo "  $secret_key: \"$value\"" >> "$OUTPUT_FILE"
-  fi
-done < "$ENV_FILE"
-
-# Add the intersight PEM file
-echo "Adding Intersight PEM file..."
-echo "  intersight-secret-key: |" >> "$OUTPUT_FILE"
-while IFS= read -r line || [[ -n "$line" ]]; do
-  echo "    $line" >> "$OUTPUT_FILE"
-done < "$PEM_FILE"
-
-echo "Secret YAML file created at: $OUTPUT_FILE"
-echo "Applying secret to OpenShift cluster..."
-
-# Apply the secret to the cluster
-oc apply -f "$OUTPUT_FILE"
-
-echo "Secret '$SECRET_NAME' created/updated successfully!"
-echo ""
-
-# Create MongoDB service account if it doesn't exist
-echo "Setting up MongoDB service account..."
-cat <<EOF | oc apply -f -
-apiVersion: v1
-kind: ServiceAccount
-metadata:
-  name: mongodb
-  labels:
-    app: mongodb
-EOF
-
-# Apply MongoDB rolebinding
-echo "Creating MongoDB role binding..."
-cat <<EOF | oc apply -f -
-kind: RoleBinding
-apiVersion: rbac.authorization.k8s.io/v1
-metadata:
-  name: system:openshift:scc:anyuid
-subjects:
-  - kind: ServiceAccount
-    name: mongodb
-roleRef:
-  apiGroup: rbac.authorization.k8s.io
-  kind: ClusterRole
-  name: system:openshift:scc:anyuid
-EOF
-
-# Apply MongoDB resources first
-echo "Applying MongoDB resources..."
-oc apply -f "$MONGODB_CONFIGMAP"
-oc apply -f "$MONGODB_INIT_CONFIGMAP"
-oc apply -f "$MONGODB_SERVICE"
-oc apply -f "$MONGODB_CONFIG"
-
-# Apply MongoDB data PVC
-MONGODB_DATA_PVC="$SCRIPT_DIR/mongodb-data-persistentvolumeclaim.yaml"
-echo "Applying MongoDB data PVC..."
-oc apply -f "$MONGODB_DATA_PVC"
-
-# Wait for MongoDB to start
-echo "Waiting for MongoDB to start..."
-oc rollout status dc/mongodb --timeout=180s || echo "MongoDB rollout not completed within timeout, continuing anyway..."
-
-# Check for and apply SSL certificates if they exist
-echo "Checking for SSL certificates..."
-SSL_CERTS_AVAILABLE=false
-
-if [ -f "$CERT_PATH" ] && [ -f "$KEY_PATH" ]; then
-  echo "SSL certificates found. Creating ConfigMaps..."
-  
-  # Create ConfigMaps from certificate files
-  echo "Creating ConfigMap for SSL certificate..."
-  oc create configmap bridgy-ssl-cert --from-file=cert.pem="$CERT_PATH" -o yaml --dry-run=client | oc apply -f -
-  
-  echo "Creating ConfigMap for SSL key..."
-  oc create configmap bridgy-ssl-key --from-file=key.pem="$KEY_PATH" -o yaml --dry-run=client | oc apply -f -
-  
-  echo "SSL certificates deployed as ConfigMaps."
-  SSL_CERTS_AVAILABLE=true
-fi
-
-# Apply SSL configuration if needed
-if [ "$SSL_CERTS_AVAILABLE" = true ] || [ -f "$(dirname "$0")/bridgy-ssl-configmap.yaml" ]; then
-  echo "Applying SSL configuration..."
-  if [ -f "$(dirname "$0")/bridgy-ssl-configmap.yaml" ]; then
-    oc apply -f "$(dirname "$0")/bridgy-ssl-configmap.yaml"
-  fi
-fi
-
-# Apply vLLM resources if they exist
-echo "Checking for vLLM resources..."
-if [ -f "$VLLM_MODELS_PVC" ] && [ -f "$VLLM_HF_PVC" ] && [ -f "$VLLM_SERVICE" ] && [ -f "$VLLM_DEPLOYMENT" ]; then
-  echo "vLLM resources found. Applying persistent volume claims..."
-  oc apply -f "$VLLM_MODELS_PVC"
-  oc apply -f "$VLLM_HF_PVC"
-  
-  echo "Applying vLLM service..."
-  oc apply -f "$VLLM_SERVICE"
-  
-  # Parse .env file for HF_TOKEN if it exists
-  if [ -f "$ENV_FILE" ]; then
-    HF_TOKEN=$(grep 'HF_TOKEN=' "$ENV_FILE" | sed 's/HF_TOKEN=//' || echo "")
-    if [ -n "$HF_TOKEN" ]; then
-      echo "Found Hugging Face token in .env file. Updating secret..."
-      oc patch secret "$SECRET_NAME" --type=merge -p "{\"stringData\":{\"hf-token\":\"$HF_TOKEN\"}}"
-    else
-      echo "No Hugging Face token found in .env file."
-      echo "WARNING: Hugging Face token is required to download the Gemma 2 model."
-      echo "Please create an .env file with HF_TOKEN=your_token or provide it via the --hf-token parameter."
-      exit 1
-    fi
-  else
-    echo "ERROR: .env file not found at $ENV_FILE"
-    echo "Please create an .env file with HF_TOKEN=your_token or provide it via the --hf-token parameter."
+# Check if files exist (skip for vLLM-only mode)
+if [ "$ONLY_VLLM" = false ]; then
+  if [ ! -f "$ENV_FILE" ]; then
+    echo "❌ Error: .env file not found at $ENV_FILE"
     exit 1
   fi
+
+  if [ ! -f "$PEM_FILE" ]; then
+    echo "❌ Error: intersight.pem file not found at $PEM_FILE"
+    exit 1
+  fi
+
+  if [ ! -f "$BRIDGY_CONFIG" ]; then
+    echo "❌ Error: Bridgy configuration file not found at $BRIDGY_CONFIG"
+    exit 1
+  fi
+fi
+
+# Create secrets
+echo "🔐 Creating Kubernetes secrets..."
+
+# Start creating the secret YAML file
+cat > "$OUTPUT_FILE" << 'EOL'
+apiVersion: v1
+kind: Secret
+metadata:
+  name: bridgy-secrets
+  labels:
+    app: bridgy
+type: Opaque
+stringData:
+EOL
+
+# Add content to the secret based on available files
+if [ "$ONLY_VLLM" = false ]; then
+  # Add .env file contents
+  echo "  📝 Adding .env variables to secret..."
+  while IFS= read -r line; do
+    if [[ $line =~ ^[A-Za-z_][A-Za-z0-9_]*= ]]; then
+      key=$(echo "$line" | cut -d'=' -f1)
+      value=$(echo "$line" | sed 's/^[^=]*=//' | sed 's/"//g' | sed "s/'//g")
+      echo "  $key: \"$value\"" >> "$OUTPUT_FILE"
+    fi
+  done < "$ENV_FILE"
   
-  USE_VLLM=true
-  echo "vLLM resources applied successfully."
-else
-  USE_VLLM=false
-  echo "vLLM resources not found or incomplete. Skipping vLLM deployment."
+  # Add intersight.pem file content
+  echo "  📝 Adding intersight.pem to secret..."
+  echo "  intersight.pem: |" >> "$OUTPUT_FILE"
+  sed 's/^/    /' "$PEM_FILE" >> "$OUTPUT_FILE"
 fi
 
-# Apply the Bridgy configuration
-echo "Applying Bridgy optimized configuration with separated MongoDB..."
-oc apply -f "$BRIDGY_CONFIG"
-
-# Apply the NodePort service with correct selector
-echo "Applying Bridgy NodePort service with correct selector..."
-oc apply -f "$(dirname "$0")/bridgy-main-nodeport-service.yaml"
-
-# Clean up any failed builds
-echo "Cleaning up any previous failed builds..."
-# Delete builds for bridgy-main
-FAILED_BUILDS=$(oc get builds -l buildconfig=bridgy-main --no-headers | grep -E "Failed|Error|Cancelled" | awk '{print $1}' || true)
-if [ -n "$FAILED_BUILDS" ]; then
-  echo "Found failed builds to clean up: $FAILED_BUILDS"
-  for build in $FAILED_BUILDS; do
-    safe_execute oc delete build $build
-  done
-else
-  echo "No failed builds found"
-fi
-# Delete build pods that belong to bridgy-main
-BUILD_PODS=$(oc get pods -l buildconfig=bridgy-main --no-headers | awk '{print $1}' || true)
-if [ -n "$BUILD_PODS" ]; then
-  echo "Found build pods to clean up: $BUILD_PODS"
-  for pod in $BUILD_PODS; do
-    safe_execute oc delete pod $pod
-  done
-else
-  echo "No build pods found"
+# Add HF token if provided via CLI or found in .env
+HF_TOKEN="$HF_TOKEN_CLI"
+if [ -z "$HF_TOKEN" ] && [ -f "$ENV_FILE" ]; then
+  HF_TOKEN=$(grep 'HF_TOKEN=' "$ENV_FILE" | sed 's/HF_TOKEN=//' | sed 's/"//g' | sed "s/'//g" || echo "")
 fi
 
-# Delete buildconfig to ensure we're using the latest
-echo "Cleaning up existing buildconfig..."
-if oc get buildconfig bridgy-main &> /dev/null; then
-  safe_execute oc delete buildconfig bridgy-main
-else
-  echo "No existing buildconfig found"
+if [ -n "$HF_TOKEN" ]; then
+  echo "  📝 Adding HF token to secret..."
+  echo "  hf-token: \"$HF_TOKEN\"" >> "$OUTPUT_FILE"
 fi
 
-# Create a buildconfig inline since it may be missing after cleanup
-echo "Creating bridgy-main buildconfig..."
-cat <<EOF | oc apply -f -
+# Apply the secret
+echo "🔐 Applying secrets to OpenShift..."
+oc apply -f "$OUTPUT_FILE"
+
+# Deploy MongoDB if not in vLLM-only mode
+if [ "$ONLY_VLLM" = false ]; then
+  echo "🗄️ Deploying MongoDB..."
+  
+  # Apply MongoDB resources
+  if [ -f "$MONGODB_SA" ]; then
+    echo "👤 Setting up MongoDB service account..."
+    oc apply -f "$MONGODB_SA"
+  fi
+  
+  if [ -f "$MONGODB_ROLEBINDING" ]; then
+    echo "🔒 Creating MongoDB role binding..."
+    oc apply -f "$MONGODB_ROLEBINDING"
+  fi
+  
+  if [ -f "$MONGODB_CONFIGMAP" ]; then
+    echo "⚙️ Applying MongoDB ConfigMap..."
+    oc apply -f "$MONGODB_CONFIGMAP"
+  fi
+  
+  if [ -f "$MONGODB_INIT_CONFIGMAP" ]; then
+    echo "🔧 Applying MongoDB init ConfigMap..."
+    oc apply -f "$MONGODB_INIT_CONFIGMAP"
+  fi
+  
+  if [ -f "$MONGODB_SERVICE" ]; then
+    echo "🔌 Applying MongoDB service..."
+    oc apply -f "$MONGODB_SERVICE"
+  fi
+  
+  if [ -f "$MONGODB_CONFIG" ]; then
+    echo "🚀 Applying MongoDB deployment..."
+    oc apply -f "$MONGODB_CONFIG"
+    
+    # Wait for MongoDB to start
+    echo "⏳ Waiting for MongoDB to start..."
+    oc rollout status deployment/mongodb --timeout=180s || echo "⚠️ MongoDB rollout not completed within timeout, continuing anyway..."
+  fi
+fi
+
+# Deploy vLLM Server if not in frontend-only mode
+if [ "$ONLY_FRONTEND" = false ]; then
+  echo "🤖 Deploying vLLM Server with Gemma 2 support..."
+  
+  # Check if the consolidated vLLM deployment file exists
+  if [ -f "$VLLM_COMPLETE_DEPLOYMENT" ]; then
+    echo "📝 Found vLLM complete deployment file"
+    
+    # Ensure HF token is available for vLLM
+    if [ -z "$HF_TOKEN" ]; then
+      echo "❌ ERROR: Hugging Face token is required for vLLM deployment"
+      echo "Please provide HF_TOKEN via --hf-token parameter or in .env file"
+      exit 1
+    fi
+    
+    # Apply the complete vLLM deployment
+    echo "🚀 Deploying vLLM server with GPU acceleration..."
+    oc apply -f "$VLLM_COMPLETE_DEPLOYMENT"
+    
+    # Wait for vLLM deployment to be ready
+    echo "⏳ Waiting for vLLM deployment to complete (this may take some time for model download)..."
+    oc rollout status dc/vllm-server --timeout=1800s || echo "⚠️ vLLM deployment timeout - check logs for progress"
+    
+    # Check final status
+    echo "🔍 Checking vLLM pod status..."
+    oc get pods -l app=vllm-server
+    
+    # Get route if it exists
+    VLLM_ROUTE=$(oc get route vllm-server -o jsonpath='{.spec.host}' 2>/dev/null || echo "")
+    if [ -n "$VLLM_ROUTE" ]; then
+      echo "🌐 vLLM Server URL: https://$VLLM_ROUTE"
+      echo "📚 API Docs: https://$VLLM_ROUTE/docs"
+      echo "🔍 Models endpoint: https://$VLLM_ROUTE/v1/models"
+    else
+      echo "📝 Use port-forward to access: oc port-forward svc/vllm-server 8000:8000"
+    fi
+    
+    echo "✅ vLLM deployment completed successfully!"
+  else
+    echo "⚠️ vLLM deployment file not found at $VLLM_COMPLETE_DEPLOYMENT"
+    echo "Skipping vLLM deployment."
+  fi
+else
+  echo "⚙️ Skipping vLLM deployment (frontend-only mode)"
+fi
+
+# Deploy Bridgy frontend if not in vLLM-only mode
+if [ "$ONLY_VLLM" = false ]; then
+  echo "🌐 Deploying Bridgy frontend..."
+  
+  # Apply the Bridgy configuration
+  echo "🚀 Applying Bridgy optimized configuration..."
+  oc apply -f "$BRIDGY_CONFIG"
+
+  # Apply the NodePort service
+  if [ -f "$BRIDGY_NODEPORT" ]; then
+    echo "🔌 Applying Bridgy NodePort service..."
+    oc apply -f "$BRIDGY_NODEPORT"
+  fi
+
+  # Clean up any failed builds
+  echo "🧹 Cleaning up any previous failed builds..."
+  FAILED_BUILDS=$(oc get builds -l buildconfig=bridgy-main --no-headers | grep -E "Failed|Error|Cancelled" | awk '{print $1}' || true)
+  if [ -n "$FAILED_BUILDS" ]; then
+    echo "Found failed builds to clean up: $FAILED_BUILDS"
+    for build in $FAILED_BUILDS; do
+      safe_execute oc delete build $build
+    done
+  fi
+
+  # Clean up build pods
+  BUILD_PODS=$(oc get pods -l buildconfig=bridgy-main --no-headers | awk '{print $1}' || true)
+  if [ -n "$BUILD_PODS" ]; then
+    echo "Cleaning up build pods: $BUILD_PODS"
+    for pod in $BUILD_PODS; do
+      safe_execute oc delete pod $pod
+    done
+  fi
+
+  # Delete existing buildconfig to ensure we're using the latest
+  if oc get buildconfig bridgy-main &> /dev/null; then
+    safe_execute oc delete buildconfig bridgy-main
+  fi
+
+  # Create buildconfig
+  echo "🔨 Creating bridgy-main buildconfig..."
+  cat <<EOF | oc apply -f -
 apiVersion: build.openshift.io/v1
 kind: BuildConfig
 metadata:
@@ -367,166 +361,72 @@ spec:
     to:
       kind: ImageStreamTag
       name: bridgy-main:latest
-EOF
-
-# Create imagestream if it doesn't exist
-echo "Creating imagestream if it doesn't exist..."
-oc get imagestream bridgy-main || oc create imagestream bridgy-main
-
-# Start the binary builds
-echo ""
-echo "Preparing source directory for binary build..."
-
-# Create temporary directory for builds
-BUILD_DIR=$(mktemp -d)
-echo "Using temporary directory: $BUILD_DIR"
-
-# Prepare bridgy-main build
-echo "Preparing bridgy-main build..."
-MAIN_DIR="$BUILD_DIR/bridgy-main-build"
-mkdir -p "$MAIN_DIR"
-cp -r "$(dirname "$0")/../bridgy-main" "$MAIN_DIR"
-cp "$(dirname "$0")/../bridgy-main/Dockerfile" "$MAIN_DIR/Dockerfile"
-
-# Make sure the scripts are executable
-chmod +x "$MAIN_DIR/bridgy-main/verify_imports.py"
-chmod +x "$MAIN_DIR/bridgy-main/optimized_init.sh"
-
-# Start the build if it doesn't exist
-if ! oc get builds -l buildconfig=bridgy-main | grep -q "bridgy-main-"; then
-  echo "Starting new build for bridgy-main from directory $MAIN_DIR..."
-  echo "This may take several minutes. Build logs will be displayed below:"
-  oc start-build bridgy-main --from-dir="$MAIN_DIR" --follow --wait=true
-else
-  echo "Build already exists, not starting a new one"
-fi
-
-# Only build vLLM if we found the resources earlier
-if [ "$USE_VLLM" = true ]; then
-  # Check if vLLM buildconfig exists, clean up if needed
-  echo "Checking for vLLM buildconfig..."
-  
-  # Clean up any failed vLLM builds
-  FAILED_BUILDS=$(oc get builds -l buildconfig=vllm-server --no-headers | grep -E "Failed|Error|Cancelled" | awk '{print $1}' || true)
-  if [ -n "$FAILED_BUILDS" ]; then
-    echo "Found failed vLLM builds to clean up: $FAILED_BUILDS"
-    for build in $FAILED_BUILDS; do
-      safe_execute oc delete build $build
-    done
-  fi
-  
-  # Delete vLLM buildconfig to ensure we're using the latest
-  echo "Cleaning up existing vLLM buildconfig..."
-  if oc get buildconfig vllm-server &> /dev/null; then
-    safe_execute oc delete buildconfig vllm-server
-  else
-    echo "No existing vLLM buildconfig found"
-  fi
-  
-  # Create vLLM build directory
-  VLLM_DIR="$BUILD_DIR/vllm"
-  echo "Preparing vLLM build directory at $VLLM_DIR..."
-  mkdir -p "$VLLM_DIR"
-  
-  # Copy vLLM files to build directory
-  if [ -d "$PROJECT_ROOT/vllm" ]; then
-    echo "Copying vLLM files from $PROJECT_ROOT/vllm/..."
-    cp -r "$PROJECT_ROOT/vllm/"* "$VLLM_DIR/"
-  else
-    echo "ERROR: vLLM directory not found at $PROJECT_ROOT/vllm"
-    echo "Please ensure the vllm directory exists in the project root."
-    exit 1
-  fi
-  
-  # Create vLLM buildconfig for binary build with build arg support
-  echo "Creating vllm-server buildconfig with Hugging Face token support..."
-  cat <<EOF | oc apply -f -
-apiVersion: build.openshift.io/v1
-kind: BuildConfig
-metadata:
-  name: vllm-server
-  labels:
-    app: vllm-server
-spec:
-  failedBuildsHistoryLimit: 3
-  successfulBuildsHistoryLimit: 3
-  output:
-    to:
-      kind: ImageStreamTag
-      name: vllm-server:latest
-  source:
-    type: Binary
-    binary: {}
-  strategy:
-    type: Docker
-    dockerStrategy:
-      dockerfilePath: Dockerfile
-      env:
-        - name: HF_TOKEN
-          value: "${HF_TOKEN}"
-      buildArgs:
-        - name: "HF_TOKEN"
-          value: "${HF_TOKEN}"
   triggers:
-    - type: ConfigChange
+  - type: ConfigChange
 EOF
 
-  # Create ImageStream if it doesn't exist
-  if ! oc get imagestream vllm-server &> /dev/null; then
-    echo "Creating ImageStream for vllm-server..."
-    oc create imagestream vllm-server
+  # Create imagestream if it doesn't exist
+  if ! oc get imagestream bridgy-main &> /dev/null; then
+    echo "📦 Creating ImageStream for bridgy-main..."
+    oc create imagestream bridgy-main
   fi
 
-  # Start the vLLM build using the binary build directory and pass HF_TOKEN as env var
-  echo "Preparing vLLM build with Hugging Face authentication..."
-  echo "Starting vllm-server build (this may take 15-30 minutes for model download)..."
+  # Start the build
+  echo "🔨 Starting Bridgy build..."
+  echo "Preparing frontend source for build..."
+  cd "$PROJECT_ROOT/bridgy-main"
   
-  # Pass the Hugging Face token as an environment variable to the build
-  oc start-build vllm-server --from-dir="$VLLM_DIR" \
-    -e HF_TOKEN="$HF_TOKEN" \
-    --follow --wait=true
+  # Make sure scripts are executable
+  chmod +x verify_imports.py optimized_init.sh 2>/dev/null || true
   
-  # Apply vLLM deployment after image is built
-  echo "Applying vLLM deployment..."
-  oc apply -f "$VLLM_DEPLOYMENT"
+  # Start binary build
+  oc start-build bridgy-main --from-dir=. --follow --wait
   
-  echo "Waiting for vLLM deployment to start..."
-  # This may timeout if the image is large and still pulling, that's ok
-  oc rollout status deploymentconfig/vllm-server --timeout=180s || true
+  echo "⏳ Waiting for deployment to complete..."
+  oc rollout status dc/bridgy-main --timeout=300s
   
-  # Update Bridgy to use vLLM if requested
-  echo "Updating Bridgy to use vLLM server for local inference..."
-  oc set env deploymentconfig/bridgy-main LLM_SERVICE_URL=http://vllm-server:8000/v1 LLM_MODEL=gemma-2-9b
+  echo "✅ Bridgy frontend deployment completed!"
+else
+  echo "⚙️ Skipping Bridgy frontend deployment (vLLM-only mode)"
 fi
 
-rm -rf "$BUILD_DIR"
-echo "Cleaned up temporary build directories."
+# Final status summary
+echo ""
+echo "🎉 Deployment Summary"
+echo "===================="
+
+if [ "$ONLY_VLLM" = false ]; then
+  echo "📊 MongoDB Status:"
+  oc get pods -l app=mongodb | head -2
+  
+  echo ""
+  echo "🌐 Bridgy Frontend Status:"
+  oc get pods -l app=bridgy-main | head -2
+  
+  # Get Bridgy route
+  BRIDGY_ROUTE=$(oc get route bridgy-main -o jsonpath='{.spec.host}' 2>/dev/null || echo "")
+  if [ -n "$BRIDGY_ROUTE" ]; then
+    echo "🔗 Bridgy URL: https://$BRIDGY_ROUTE"
+  fi
+fi
+
+if [ "$ONLY_FRONTEND" = false ]; then
+  echo ""
+  echo "🤖 vLLM Server Status:"
+  oc get pods -l app=vllm-server | head -2
+  
+  VLLM_ROUTE=$(oc get route vllm-server -o jsonpath='{.spec.host}' 2>/dev/null || echo "")
+  if [ -n "$VLLM_ROUTE" ]; then
+    echo "🔗 vLLM URL: https://$VLLM_ROUTE"
+  fi
+fi
 
 echo ""
-echo "Deployment initiated successfully!"
-echo "You can monitor the build status with:"
-echo "  oc get builds"
-echo "  oc get pods"
-
-# Wait for a moment and then show the build status
-sleep 5
-echo ""
-echo "Current build status:"
-oc get builds
+echo "📖 Useful commands:"
+echo "  🔍 Check all pods: oc get pods"
+echo "  📋 Check logs: oc logs -l app=<app-name> -f"
+echo "  🌐 Get routes: oc get routes"
+echo "  🔧 Port forward: oc port-forward svc/<service-name> <local-port>:<remote-port>"
 
 echo ""
-echo "Current pods:"
-oc get pods
-
-echo ""
-echo "Services:"
-oc get services | grep bridgy
-
-echo ""
-echo "Routes:"
-oc get routes | grep bridgy
-
-echo ""
-echo "Deployment process has been started. The application will be available"
-echo "once the builds complete and the pods are running."
-echo "You can continue monitoring with: oc get pods -w"
+echo "✅ Deployment completed successfully!"
