@@ -291,7 +291,11 @@ def generate_id() -> str:
 def get_timestamp() -> str:
     return str(int(time.time() * 1000))
 
-def get_unix_timestamp() -> int:
+def get_unix_timestamp(timestamp=None) -> int:
+    if timestamp:
+        # If a timestamp is provided, return it as is (assuming it's already in the correct format)
+        return timestamp
+    # Otherwise return current time
     return int(time.time() * 1000)
 
 async def generate_follow_ups(original_message: str, response: str, expert: str) -> List[str]:
