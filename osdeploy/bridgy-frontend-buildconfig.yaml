@@ -1,0 +1,37 @@
+apiVersion: build.openshift.io/v1
+kind: BuildConfig
+metadata:
+  name: bridgy-frontend
+  labels:
+    app: bridgy-frontend
+    component: frontend
+    part-of: bridgy
+spec:
+  output:
+    to:
+      kind: ImageStreamTag
+      name: bridgy-frontend:latest
+  source:
+    type: Binary
+    binary:
+      asFile: ""
+  strategy:
+    type: Docker
+    dockerStrategy:
+      dockerfilePath: Dockerfile
+  triggers:
+  - type: ConfigChange
+  - type: ImageChange
+    imageChange: {}
+---
+apiVersion: image.openshift.io/v1
+kind: ImageStream
+metadata:
+  name: bridgy-frontend
+  labels:
+    app: bridgy-frontend
+    component: frontend
+    part-of: bridgy
+spec:
+  lookupPolicy:
+    local: false

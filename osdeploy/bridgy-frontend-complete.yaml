@@ -1,0 +1,170 @@
+---
+# Bridgy Frontend ImageStream
+apiVersion: image.openshift.io/v1
+kind: ImageStream
+metadata:
+  name: bridgy-frontend
+  labels:
+    app: bridgy-frontend
+    component: frontend
+    part-of: bridgy
+spec:
+  lookupPolicy:
+    local: false
+
+---
+# Bridgy Frontend BuildConfig  
+apiVersion: build.openshift.io/v1
+kind: BuildConfig
+metadata:
+  name: bridgy-frontend
+  labels:
+    app: bridgy-frontend
+    component: frontend
+    part-of: bridgy
+spec:
+  output:
+    to:
+      kind: ImageStreamTag
+      name: bridgy-frontend:latest
+  source:
+    type: Binary
+    binary:
+      asFile: ""
+  strategy:
+    type: Docker
+    dockerStrategy:
+      dockerfilePath: Dockerfile
+  triggers:
+  - type: ConfigChange
+  - type: ImageChange
+    imageChange: {}
+
+---
+# Bridgy Frontend DeploymentConfig
+apiVersion: apps.openshift.io/v1
+kind: DeploymentConfig
+metadata:
+  name: bridgy-frontend
+  labels:
+    app: bridgy-frontend
+    component: frontend
+    part-of: bridgy
+spec:
+  replicas: 1
+  selector:
+    app: bridgy-frontend
+    deploymentconfig: bridgy-frontend
+  strategy:
+    type: Rolling
+    rollingParams:
+      updatePeriodSeconds: 1
+      intervalSeconds: 1
+      timeoutSeconds: 300
+      maxUnavailable: 25%
+      maxSurge: 25%
+  template:
+    metadata:
+      labels:
+        app: bridgy-frontend
+        deploymentconfig: bridgy-frontend
+        component: frontend
+        part-of: bridgy
+    spec:
+      containers:
+      - name: bridgy-frontend
+        image: bridgy-frontend:latest
+        ports:
+        - containerPort: 8080
+          protocol: TCP
+        resources:
+          limits:
+            cpu: 200m
+            memory: 256Mi
+          requests:
+            cpu: 100m
+            memory: 128Mi
+        livenessProbe:
+          httpGet:
+            path: /
+            port: 8080
+            scheme: HTTP
+          initialDelaySeconds: 30
+          timeoutSeconds: 5
+          periodSeconds: 10
+          successThreshold: 1
+          failureThreshold: 3
+        readinessProbe:
+          httpGet:
+            path: /
+            port: 8080
+            scheme: HTTP
+          initialDelaySeconds: 5
+          timeoutSeconds: 5
+          periodSeconds: 5
+          successThreshold: 1
+          failureThreshold: 3
+        terminationMessagePath: /dev/termination-log
+        terminationMessagePolicy: File
+        imagePullPolicy: Always
+        securityContext:
+          runAsNonRoot: true
+          allowPrivilegeEscalation: false
+      dnsPolicy: ClusterFirst
+      restartPolicy: Always
+      schedulerName: default-scheduler
+      securityContext: {}
+      terminationGracePeriodSeconds: 30
+  triggers:
+  - type: ConfigChange
+  - type: ImageChange
+    imageChangeParams:
+      automatic: true
+      containerNames:
+      - bridgy-frontend
+      from:
+        kind: ImageStreamTag
+        name: bridgy-frontend:latest
+
+---
+# Bridgy Frontend Service
+apiVersion: v1
+kind: Service
+metadata:
+  name: bridgy-frontend
+  labels:
+    app: bridgy-frontend
+    component: frontend
+    part-of: bridgy
+spec:
+  ports:
+  - name: 8080-tcp
+    port: 8080
+    protocol: TCP
+    targetPort: 8080
+  selector:
+    app: bridgy-frontend
+    deploymentconfig: bridgy-frontend
+  type: ClusterIP
+
+---
+# Bridgy Frontend Route
+apiVersion: route.openshift.io/v1
+kind: Route
+metadata:
+  name: bridgy-frontend
+  labels:
+    app: bridgy-frontend
+    component: frontend
+    part-of: bridgy
+spec:
+  port:
+    targetPort: 8080-tcp
+  to:
+    kind: Service
+    name: bridgy-frontend
+    weight: 100
+  wildcardPolicy: None
+  tls:
+    termination: edge
+    insecureEdgeTerminationPolicy: Redirect

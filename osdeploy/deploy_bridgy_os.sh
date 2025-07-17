@@ -77,6 +77,51 @@ cleanup_existing_deployments() {
     oc delete pods -l app=vllm-server --force --grace-period=0 --ignore-not-found=true
     oc delete pods -l app=vllm-server-fixed --force --grace-period=0 --ignore-not-found=true
     
+    # Clean up all Bridgy main pods by pattern (including running pods like bridgy-main-XXX-xxxxx)
+    echo "  🗜️ Cleaning up all Bridgy main pods by pattern..."
+    oc get pods --no-headers | grep -E "^bridgy-main-[0-9]+" | awk '{print $1}' | xargs -r oc delete pods --force --grace-period=0 --ignore-not-found=true
+    
+    # Clean up Bridgy frontend resources
+    echo "  🎨 Cleaning up Bridgy frontend resources..."
+    oc delete dc bridgy-frontend --ignore-not-found=true
+    oc delete deployments -l app=bridgy-frontend --ignore-not-found=true
+    oc delete rc -l app=bridgy-frontend --ignore-not-found=true
+    oc delete services bridgy-frontend --ignore-not-found=true
+    oc delete routes bridgy-frontend --ignore-not-found=true
+    oc delete pods -l app=bridgy-frontend --force --grace-period=0 --ignore-not-found=true
+    
+    # Clean up all Bridgy frontend pods by pattern
+    echo "  🗜️ Cleaning up all Bridgy frontend pods by pattern..."
+    oc get pods --no-headers | grep -E "^bridgy-frontend-[0-9]+" | awk '{print $1}' | xargs -r oc delete pods --force --grace-period=0 --ignore-not-found=true
+    
+    # Clean up ALL deploy pods (OpenShift creates these during deployments)
+    echo "  🚀 Cleaning up ALL deploy pods..."
+    oc get pods --no-headers | grep -E "deploy" | grep -E "(bridgy-main-|vllm-server-|bridgy-frontend-)" | awk '{print $1}' | while read pod; do
+        if [ -n "$pod" ]; then
+            echo "    Deleting deploy pod: $pod"
+            oc delete pod "$pod" --force --grace-period=0 --ignore-not-found=true
+        fi
+    done
+    
+    # Clean up ALL build pods by pattern
+    echo "  🔨 Cleaning up ALL build pods..."
+    oc get pods --no-headers | grep -E "build" | grep -E "(bridgy-main-|vllm-server-|bridgy-frontend-)" | awk '{print $1}' | while read pod; do
+        if [ -n "$pod" ]; then
+            echo "    Deleting build pod: $pod"
+            oc delete pod "$pod" --force --grace-period=0 --ignore-not-found=true
+        fi
+    done
+    
+    # Clean up completed pods for these apps
+    echo "  ✅ Cleaning up completed pods..."
+    oc delete pods --field-selector=status.phase=Succeeded --ignore-not-found=true
+    oc get pods --no-headers | grep "Completed" | awk '{print $1}' | while read pod; do
+        if [ -n "$pod" ]; then
+            echo "    Deleting completed pod: $pod"
+            oc delete pod "$pod" --ignore-not-found=true
+        fi
+    done
+    
     # Clean up Bridgy main resources
     echo "  🌉 Cleaning up Bridgy main resources..."
     oc delete dc bridgy-main --ignore-not-found=true
@@ -96,26 +141,13 @@ cleanup_existing_deployments() {
     # Clean up builds and related resources comprehensively
     echo "  🔨 Cleaning up builds and build configs..."
     oc delete builds --all --ignore-not-found=true
-    oc delete bc bridgy-main vllm-server --ignore-not-found=true
+    oc delete bc bridgy-main vllm-server bridgy-frontend --ignore-not-found=true
     
     # Clean up build-related pods
     echo "  📦 Cleaning up build pods..."
     oc delete pods -l openshift.io/build.name --force --grace-period=0 --ignore-not-found=true
     oc delete pods -l app=bridgy-main-build --force --grace-period=0 --ignore-not-found=true
     oc delete pods -l app=vllm-server-build --force --grace-period=0 --ignore-not-found=true
-    
-    # Clean up deploy pods (OpenShift creates these during deployments)
-    echo "  🚀 Cleaning up deploy pods..."
-    oc get pods --no-headers | grep -E "(bridgy-main-[0-9]+-deploy|vllm-server-[0-9]+-deploy)" | awk '{print $1}' | xargs -r oc delete pods --force --grace-period=0 --ignore-not-found=true
-    
-    # Clean up specific build pods by pattern
-    echo "  🔨 Cleaning up numbered build pods..."
-    oc get pods --no-headers | grep -E "(bridgy-main-[0-9]+-build|vllm-server-[0-9]+-build)" | awk '{print $1}' | xargs -r oc delete pods --force --grace-period=0 --ignore-not-found=true
-    
-    # Clean up completed pods for these apps
-    echo "  ✅ Cleaning up completed pods..."
-    oc delete pods --field-selector=status.phase=Succeeded --ignore-not-found=true
-    oc get pods --no-headers | grep "Completed" | awk '{print $1}' | xargs -r oc delete pods --ignore-not-found=true
     
     # Clean up any stuck build-related resources
     echo "  ⚙️ Cleaning up build secrets and configs..."
@@ -124,8 +156,8 @@ cleanup_existing_deployments() {
     
     # Clean up image streams and tags
     echo "  📦 Cleaning up image streams and tags..."
-    oc delete is bridgy-main vllm-server --ignore-not-found=true
-    oc delete istag bridgy-main:latest vllm-server:latest --ignore-not-found=true
+    oc delete is bridgy-main vllm-server bridgy-frontend --ignore-not-found=true
+    oc delete istag bridgy-main:latest vllm-server:latest bridgy-frontend:latest --ignore-not-found=true
     
     # Clean up any dangling build artifacts
     echo "  🗺️ Cleaning up build artifacts..."
@@ -505,6 +537,69 @@ EOF
   
   echo "⏳ Waiting for deployment to complete..."
   oc rollout status dc/bridgy-main --timeout=300s
+  
+  echo "✅ Bridgy main deployment completed!"
+  
+  # Build and Deploy Bridgy frontend (React/nginx)
+  echo "🎨 Building and Deploying Bridgy frontend (React/nginx)..."
+  
+  # Apply the Bridgy frontend configuration
+  echo "🚀 Applying Bridgy frontend configuration..."
+  oc apply -f "$PROJECT_ROOT/osdeploy/bridgy-frontend-complete.yaml"
+  
+  # Delete existing buildconfig to ensure we're using the latest
+  if oc get buildconfig bridgy-frontend &> /dev/null; then
+    echo "Deleting existing bridgy-frontend buildconfig..."
+    oc delete buildconfig bridgy-frontend
+  fi
+  
+  # Create imagestream if it doesn't exist
+  if ! oc get imagestream bridgy-frontend &> /dev/null; then
+    echo "📦 Creating ImageStream for bridgy-frontend..."
+    oc create imagestream bridgy-frontend
+  fi
+  
+  # Create buildconfig
+  echo "🔨 Creating bridgy-frontend buildconfig..."
+  cat <<EOF | oc apply -f -
+apiVersion: build.openshift.io/v1
+kind: BuildConfig
+metadata:
+  name: bridgy-frontend
+  labels:
+    app: bridgy-frontend
+    component: frontend
+spec:
+  source:
+    type: Binary
+  strategy:
+    type: Docker
+    dockerStrategy:
+      dockerfilePath: Dockerfile
+  output:
+    to:
+      kind: ImageStreamTag
+      name: bridgy-frontend:latest
+  triggers:
+  - type: ConfigChange
+EOF
+  
+  # Start the build
+  echo "🔨 Starting Bridgy frontend build..."
+  echo "Preparing frontend source for build..."
+  cd "$PROJECT_ROOT/bridgy-frontend"
+  
+  # Start binary build
+  echo "Starting Bridgy frontend build (this may take 2-5 minutes)..."
+  oc start-build bridgy-frontend --from-dir=. --follow --wait
+  
+  echo "✅ Bridgy frontend build completed successfully!"
+  
+  # Return to osdeploy directory
+  cd "$PROJECT_ROOT/osdeploy"
+  
+  echo "⏳ Waiting for frontend deployment to complete..."
+  oc rollout status dc/bridgy-frontend --timeout=300s
   
   echo "✅ Bridgy frontend deployment completed!"
 else
