@@ -73,7 +73,7 @@ EOF
     --tensor-parallel-size ${TENSOR_PARALLEL_SIZE:-1} \
     --host 0.0.0.0 \
     --port 8000 \
-    --served-model-name "gemma-2" \
+    --served-model-name "gemma-2-9b" \
     --max-model-len 8192 \
     --trust-remote-code
 }
