@@ -104,6 +104,19 @@ cleanup_existing_deployments() {
     oc delete pods -l app=bridgy-main-build --force --grace-period=0 --ignore-not-found=true
     oc delete pods -l app=vllm-server-build --force --grace-period=0 --ignore-not-found=true
     
+    # Clean up deploy pods (OpenShift creates these during deployments)
+    echo "  🚀 Cleaning up deploy pods..."
+    oc get pods --no-headers | grep -E "(bridgy-main-[0-9]+-deploy|vllm-server-[0-9]+-deploy)" | awk '{print $1}' | xargs -r oc delete pods --force --grace-period=0 --ignore-not-found=true
+    
+    # Clean up specific build pods by pattern
+    echo "  🔨 Cleaning up numbered build pods..."
+    oc get pods --no-headers | grep -E "(bridgy-main-[0-9]+-build|vllm-server-[0-9]+-build)" | awk '{print $1}' | xargs -r oc delete pods --force --grace-period=0 --ignore-not-found=true
+    
+    # Clean up completed pods for these apps
+    echo "  ✅ Cleaning up completed pods..."
+    oc delete pods --field-selector=status.phase=Succeeded --ignore-not-found=true
+    oc get pods --no-headers | grep "Completed" | awk '{print $1}' | xargs -r oc delete pods --ignore-not-found=true
+    
     # Clean up any stuck build-related resources
     echo "  ⚙️ Cleaning up build secrets and configs..."
     oc delete secrets -l build.openshift.io/build.name --ignore-not-found=true
