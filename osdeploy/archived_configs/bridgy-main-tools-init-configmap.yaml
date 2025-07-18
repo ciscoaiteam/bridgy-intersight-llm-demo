@@ -1,8 +1,0 @@
-apiVersion: v1
-kind: ConfigMap
-metadata:
-  name: bridgy-main-tools-init
-data:
-  __init__.py: |
-    # Make the tools directory a proper Python package
-    # This empty file is sufficient to mark the directory as a package

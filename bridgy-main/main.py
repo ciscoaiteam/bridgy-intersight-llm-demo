@@ -1,41 +1,3 @@
-#!/usr/bin/env python3
-import sys
-import os
-
-try:
-    # Fix module structure for bridgy_main
-    # Create bridgy_main module symlink
-    if not os.path.exists("/app/bridgy_main"):
-        try:
-            # Create symlink from bridgy-main to bridgy_main
-            os.symlink("/app/bridgy-main", "/app/bridgy_main")
-            print("✅ Created bridgy_main module symlink")
-        except Exception as e:
-            print(f"⚠️ Could not create bridgy_main module: {e}")
-    
-    # Add important paths to Python path
-    sys_paths = ["/app", "/app/bridgy-main", "/app/bridgy_main"]
-    for path in sys_paths:
-        if path not in sys.path:
-            sys.path.append(path)
-            print(f"✅ Added {path} to Python path")
-    
-    # Ensure .env file exists at /app/.env
-    if os.path.exists("/app/bridgy-main/.env") and not os.path.exists("/app/.env"):
-        try:
-            os.symlink("/app/bridgy-main/.env", "/app/.env")
-            print("✅ Created .env symlink")
-        except:
-            from shutil import copyfile
-            copyfile("/app/bridgy-main/.env", "/app/.env")
-            print("✅ Copied .env file to /app/.env")
-            
-    # Now proceed with normal imports
-    print("✅ MongoDB compatibility fix applied, continuing with imports")
-except Exception as e:
-    print(f"⚠️ Error applying MongoDB compatibility patch: {e}")
-
-# Regular imports follow
 from fastapi import FastAPI, HTTPException, Request, Header, Depends
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
@@ -54,38 +16,6 @@ from experts.router import ExpertRouter
 import ssl
 import motor.motor_asyncio
 from bson import ObjectId
-# MongoDB compatibility fix - apply before any imports
-import sys
-import os
-
-# Check if we need to fix the motor/pymongo compatibility
-try:
-    # Test if the problematic import works
-    from pymongo.cursor import _QUERY_OPTIONS
-    print("✅ Motor/PyMongo compatibility check passed")
-except ImportError:
-    print("⚠️ Applying motor/pymongo compatibility patch")
-    
-    # Create the missing variable in pymongo.cursor
-    import pymongo.cursor
-    pymongo.cursor._QUERY_OPTIONS = frozenset([
-        "tailable_cursor", "secondary_ok", "oplog_replay",
-        "no_timeout", "await_data", "exhaust", "partial"
-    ])
-    print("✅ Added _QUERY_OPTIONS to pymongo.cursor")
-
-# Ensure bridgy_main is importable
-if not os.path.exists("/app/bridgy_main"):
-    os.symlink("/app/bridgy-main", "/app/bridgy_main")
-    with open("/app/bridgy_main/__init__.py", "w") as f:
-        pass
-    print("✅ Created bridgy_main module link")
-    
-# Make sure Python path is set correctly
-for path in ["/app", "/app/bridgy-main", "/app/bridgy_main"]:
-    if path not in sys.path:
-        sys.path.append(path)
-
 import asyncio
 import re
 
@@ -163,51 +93,18 @@ logger.info("Main logger test")
 logging.getLogger("experts.router").error("Test from experts.router logger")
 
 # Load environment variables
-# Use the canonical .env file location
-canonical_env_file = "/app/bridgy-main/.env"
-
-# Load environment variables from the canonical location
-if os.path.exists(canonical_env_file):
-    print(f"✅ Loading environment from canonical location: {canonical_env_file}")
-    load_dotenv(canonical_env_file)
-else:
-    print(f"⚠️ Canonical .env file not found at {canonical_env_file}, using environment variables only")
-    # Try without a path as last resort
-    load_dotenv()
+load_dotenv()
 logger.debug("Environment variables loaded")
 
 # MongoDB Configuration
-MONGODB_URL = os.getenv("MONGODB_URL", "mongodb://localhost:27017")
-# Ensure no auth credentials are in the URL
-if '@' in MONGODB_URL:
-    # Strip out authentication if present
-    parts = MONGODB_URL.split('@')
-    if len(parts) > 1:
-        MONGODB_URL = 'mongodb://' + parts[1]
+MONGODB_URL = os.getenv("MONGODB_URL", "mongodb://mongodb:27017")
 DB_NAME = os.getenv("MONGODB_DB", "bridgy_db")
 THREADS_COLLECTION = "threads"
 MESSAGES_COLLECTION = "messages"
-MONGO_ENABLED = os.getenv("MONGO_ENABLED", "false").lower() == "true"
 
-# Initialize MongoDB client if enabled
-client = None
-db = None
-if MONGO_ENABLED:
-    try:
-        client = motor.motor_asyncio.AsyncIOMotorClient(MONGODB_URL, serverSelectionTimeoutMS=5000)
-        db = client[DB_NAME]
-        # Test the connection
-        client.admin.command('ping')
-        logger.info("MongoDB connection successful")
-    except Exception as e:
-        logger.warning(f"MongoDB connection failed, running without persistence: {str(e)}")
-        MONGO_ENABLED = False
-else:
-    logger.info("MongoDB disabled by configuration, running without persistence")
-    
-# In-memory storage when MongoDB is not available
-memory_threads = {}
-memory_messages = {}
+# Initialize MongoDB client
+client = motor.motor_asyncio.AsyncIOMotorClient(MONGODB_URL)
+db = client[DB_NAME]
 
 # Create FastAPI app
 app = FastAPI(title="Cisco Bridgy AI Assistant API", version="1.0.0")
@@ -289,13 +186,9 @@ def generate_id() -> str:
     return str(uuid.uuid4())
 
 def get_timestamp() -> str:
-    return str(int(time.time() * 1000))
+    return int(time.time() * 1000)
 
-def get_unix_timestamp(timestamp=None) -> int:
-    if timestamp:
-        # If a timestamp is provided, return it as is (assuming it's already in the correct format)
-        return timestamp
-    # Otherwise return current time
+def get_unix_timestamp() -> int:
     return int(time.time() * 1000)
 
 async def generate_follow_ups(original_message: str, response: str, expert: str) -> List[str]:
@@ -384,14 +277,13 @@ async def health_check():
     logger.info("Health check requested")
     
     # Check MongoDB connection
-    mongo_status = "disabled"
-    if MONGO_ENABLED and client:
-        try:
-            await client.admin.command('ping')
-            mongo_status = "healthy"
-        except Exception as e:
-            mongo_status = "unhealthy"
-            logger.error(f"MongoDB connection error: {str(e)}")
+    mongo_status = "connected"
+    try:
+        # Ping the database
+        await db.command("ping")
+    except Exception as e:
+        mongo_status = "disconnected"
+        logger.error(f"MongoDB connection error: {str(e)}")
     
     # Check if expert router can be initialized
     expert_status = "connected"
@@ -420,21 +312,16 @@ async def create_thread(thread_data: ThreadCreate):
         logger.debug(f"Received thread creation request for thread name: '{thread_data.threadName}'")
         
         thread_id = generate_id()
-        # Store thread
-        thread = ThreadModel(
-            threadId=thread_id,
-            threadName=thread_data.threadName,
-            createdAt=get_timestamp()
-        )
+        timestamp = get_timestamp()
         
-        if MONGO_ENABLED and db:
-            try:
-                await db[THREADS_COLLECTION].insert_one(thread.model_dump(by_alias=True))
-            except Exception as e:
-                logger.error(f"Failed to store thread in MongoDB: {str(e)}")
-                
-        # Store in memory if MongoDB is not available
-        memory_threads[thread_id] = thread.model_dump()
+        thread_doc = {
+            "threadId": thread_id,
+            "threadName": thread_data.threadName,
+            "dateModified": timestamp
+        }
+        
+        # Store thread in MongoDB
+        await db[THREADS_COLLECTION].insert_one(thread_doc)
         
         logger.info(f"Successfully created thread with ID: {thread_id} and name: '{thread_data.threadName}'")
         
@@ -451,18 +338,7 @@ async def send_message(thread_id: str, message_data: MessageCreate):
     logger.debug(f"Message data: {message_data}")
     
     # Check if thread exists
-    thread = None
-    if MONGO_ENABLED and db:
-        try:
-            thread_doc = await db[THREADS_COLLECTION].find_one({"threadId": thread_id})
-            if thread_doc:
-                thread = ThreadModel(**thread_doc)
-        except Exception as e:
-            logger.error(f"Error retrieving thread from MongoDB: {str(e)}")
-    
-    if not thread and thread_id in memory_threads:
-        thread = ThreadModel(**memory_threads[thread_id])
-    
+    thread = await db[THREADS_COLLECTION].find_one({"threadId": thread_id})
     if not thread:
         logger.warning(f"Thread not found: {thread_id}")
         raise HTTPException(status_code=404, detail="Thread not found")
@@ -488,7 +364,7 @@ async def send_message(thread_id: str, message_data: MessageCreate):
         # Generate follow-up suggestions
         follow_ups = await generate_follow_ups(message_data.message, response, expert)
         
-        # Create message record
+        # Create message record for MongoDB
         message_id = generate_id()
         timestamp = get_timestamp()
         unix_timestamp = get_unix_timestamp()
@@ -511,27 +387,19 @@ async def send_message(thread_id: str, message_data: MessageCreate):
         formatted_response = re.sub(r'\*\*(.+?)\*\*', r'<b>\1</b>', formatted_response)
 
 
-        # Store message
-        message_doc = MessageModel(
-            messageId=message_id,
-            threadId=thread_id,
-            userMessage=message_data.message,
-            assistantMessage=formatted_response,
-            expert=expert,
-            timestamp=timestamp,
-            autoInvokedCommand=message_data.autoInvokedCommand
-        )
+        # Store Uwer and System Response
+        message_doc = {
+            "messageId": message_id,
+            "threadId": thread_id,
+            "userMessage": message_data.message,
+            "assistantMessage": formatted_response,
+            "expert": expert,
+            "timestamp": timestamp,
+            "autoInvokedCommand": message_data.autoInvokedCommand
+        }
         
-        if MONGO_ENABLED and db:
-            try:
-                await db[MESSAGES_COLLECTION].insert_one(message_doc.model_dump(by_alias=True))
-            except Exception as e:
-                logger.error(f"Failed to store message in MongoDB: {str(e)}")
-                
-        # Store in memory if MongoDB is not available
-        if thread_id not in memory_messages:
-            memory_messages[thread_id] = []
-        memory_messages[thread_id].append(message_doc.model_dump())
+        # Store message in MongoDB
+        await db[MESSAGES_COLLECTION].insert_one(message_doc)
         
         logger.info(f"Successfully processed message for thread {thread_id}")
         logger.debug(f"Response length: {len(response)} characters")
@@ -539,7 +407,7 @@ async def send_message(thread_id: str, message_data: MessageCreate):
         # Return the expected response format
         return MessageResponse(
             content=formatted_response,
-            url="https://localhost:8443",  # HTTPS URL - customize as needed
+            url="https://64.101.226.223:30843/api",  # HTTPS URL - customize as needed
             timestamp=unix_timestamp,
             id=message_id,
             followUps=follow_ups,
@@ -557,29 +425,14 @@ async def get_threads():
     
     try:
         # Retrieve threads from MongoDB
-        threads = []
-        if MONGO_ENABLED and db:
-            try:
-                cursor = db[THREADS_COLLECTION].find().sort("createdAt", -1)  # Sort by creation date, newest first
-                async for doc in cursor:
-                    thread = ThreadModel(**doc)
-                    threads.append({
-                        "id": thread.threadId,
-                        "name": thread.threadName,
-                        "createdAt": thread.createdAt
-                    })
-            except Exception as e:
-                logger.error(f"Error retrieving threads from MongoDB: {str(e)}")
-        
-        # Add threads from memory storage
-        for thread_id, thread in memory_threads.items():
-            threads.append({
-                "id": thread_id,
-                "name": thread["threadName"],
-                "createdAt": thread["createdAt"]
-            })
+        cursor = db[THREADS_COLLECTION].find().sort("dateModified", -1)  # Sort by creation date, newest first
+        threads = await cursor.to_list(length=100)  # Limit to 100 threads
         
         logger.info(f"Retrieved {len(threads)} threads")
+        
+        # Convert ObjectId to string for JSON serialization
+        for thread in threads:
+            thread["_id"] = str(thread["_id"])
         
         return {"items": threads}
     except Exception as e:
@@ -591,65 +444,39 @@ async def get_thread(thread_id: str):
     """Get specific thread with its messages"""
     logger.info(f"Retrieving thread: {thread_id}")
     try:
-        # Find the thread
-        thread = None
-        messages = []
-        
-        if MONGO_ENABLED and db:
-            try:
-                thread_doc = await db[THREADS_COLLECTION].find_one({"threadId": thread_id})
-                if thread_doc:
-                    thread = ThreadModel(**thread_doc)
-                    
-                    # Get all messages for the thread
-                    cursor = db[MESSAGES_COLLECTION].find({"threadId": thread_id}).sort("timestamp", 1)
-                    async for doc in cursor:
-                        message = MessageModel(**doc)
-                        messages.append({
-                            "id": message.messageId,
-                            "content": message.userMessage,
-                            "timestamp": get_unix_timestamp(message.timestamp),
-                            "type": "user"
-                        })
-                        messages.append({
-                            "id": generate_id(),
-                            "content": message.assistantMessage,
-                            "timestamp": get_unix_timestamp(message.timestamp) + 1,  # +1 to ensure it's after the user message
-                            "type": "assistant",
-                            "expert": message.expert
-                        })
-            except Exception as e:
-                logger.error(f"Error retrieving thread from MongoDB: {str(e)}")
-                # Fall back to memory storage
-        
-        # If not found in MongoDB or MongoDB disabled, check memory storage
-        if not thread and thread_id in memory_threads:
-            thread = ThreadModel(**memory_threads[thread_id])
-            
-            # Get messages from memory storage
-            if thread_id in memory_messages:
-                for doc in memory_messages[thread_id]:
-                    message = MessageModel(**doc)
-                    messages.append({
-                        "id": message.messageId,
-                        "content": message.userMessage,
-                        "timestamp": get_unix_timestamp(message.timestamp),
-                        "type": "user"
-                    })
-                    messages.append({
-                        "id": generate_id(),
-                        "content": message.assistantMessage,
-                        "timestamp": get_unix_timestamp(message.timestamp) + 1,
-                        "type": "assistant",
-                        "expert": message.expert
-                    })
-        
+        # Get thread information
+        thread = await db[THREADS_COLLECTION].find_one({"threadId": thread_id})
         if not thread:
+            logger.warning(f"Thread not found: {thread_id}")
             raise HTTPException(status_code=404, detail="Thread not found")
+        # Convert ObjectId to string
+        thread["_id"] = str(thread["_id"])
+        # Get messages for this thread
+        cursor = db[MESSAGES_COLLECTION].find({"threadId": thread_id}).sort("timestamp", 1)  # Sort by timestamp
+        messages = await cursor.to_list(length=1000)  # Limit to 1000 messages per thread
         
-        logger.info(f"Thread found with {len(messages)} messages")
+        # Format messages as separate user and assistant items
+        formatted_messages = []
+        for message in messages:
+            # Add user message
+            formatted_messages.append({
+                "sender": "USER",
+                "content": message["userMessage"],
+                "timestamp": int(message["timestamp"].timestamp() * 1000) if isinstance(message["timestamp"], datetime) else int(message["timestamp"]),
+                "id": message.get("messageId", str(message["_id"]))
+            })
+            
+            # Add assistant message
+            formatted_messages.append({
+                "sender": "SYSTEM",
+                "content": message["assistantMessage"],
+                "timestamp": int(message["timestamp"].timestamp() * 1000) if isinstance(message["timestamp"], datetime) else int(message["timestamp"]) + 1,  # Add 1ms to ensure chronological order
+                "id": f"{message.get('messageId', str(message['_id']))}_response"
+            })
+        
+        logger.info(f"Thread found with {len(formatted_messages)} formatted messages")
         return {
-            "items": messages
+            "items": formatted_messages
         }
     except HTTPException:
         raise
@@ -663,31 +490,19 @@ async def delete_thread(thread_id: str):
     logger.info(f"Deleting thread: {thread_id}")
     
     try:
-        # Delete thread and all its messages
-        deleted = False
-        
-        if MONGO_ENABLED and db:
-            try:
-                result = await db[THREADS_COLLECTION].delete_one({"threadId": thread_id})
-                if result.deleted_count > 0:
-                    deleted = True
-                    # Delete associated messages
-                    await db[MESSAGES_COLLECTION].delete_many({"threadId": thread_id})
-            except Exception as e:
-                logger.error(f"Error deleting thread from MongoDB: {str(e)}")
-        
-        # Also remove from memory storage if present
-        if thread_id in memory_threads:
-            del memory_threads[thread_id]
-            deleted = True
-            
-        if thread_id in memory_messages:
-            del memory_messages[thread_id]
-        
-        if not deleted:
+        # Check if thread exists
+        thread = await db[THREADS_COLLECTION].find_one({"threadId": thread_id})
+        if not thread:
+            logger.warning(f"Thread not found: {thread_id}")
             raise HTTPException(status_code=404, detail="Thread not found")
         
-        logger.info(f"Successfully deleted thread {thread_id}")
+        # Delete thread from database
+        thread_result = await db[THREADS_COLLECTION].delete_one({"threadId": thread_id})
+        
+        # Delete all messages associated with this thread
+        message_result = await db[MESSAGES_COLLECTION].delete_many({"threadId": thread_id})
+        
+        logger.info(f"Successfully deleted thread {thread_id} and {message_result.deleted_count} associated messages")
         
         return {
             "success": True,
@@ -783,8 +598,8 @@ if __name__ == "__main__":
     logger.info("Initializing FastAPI server with HTTPS...")
     
     # Check if SSL certificate files exist
-    cert_file = "/app/bridgy-main/cert.pem"
-    key_file = "/app/bridgy-main/key.pem"
+    cert_file = "cert.pem"
+    key_file = "key.pem"
     
     if os.path.exists(cert_file) and os.path.exists(key_file):
         # Start server with HTTPS
