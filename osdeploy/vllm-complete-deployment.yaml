@@ -1,0 +1,241 @@
+# Complete vLLM Server Deployment for OpenShift
+# This file contains all resources needed for vLLM deployment with Gemma 2 support
+# Includes: ServiceAccount, PVCs, DeploymentConfig, and Service
+
+---
+# ServiceAccount with necessary permissions
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: vllm-sa
+  labels:
+    app: vllm-server
+    component: serviceaccount
+
+---
+# Role for vLLM service account
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: vllm-role
+  labels:
+    app: vllm-server
+    component: rbac
+rules:
+- apiGroups: [""]
+  resources: ["persistentvolumeclaims", "pods"]
+  verbs: ["get", "list", "watch", "update"]
+
+---
+# RoleBinding for vLLM service account
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: vllm-rolebinding
+  labels:
+    app: vllm-server
+    component: rbac
+subjects:
+- kind: ServiceAccount
+  name: vllm-sa
+  namespace: demo1
+roleRef:
+  kind: Role
+  name: vllm-role
+  apiGroup: rbac.authorization.k8s.io
+
+---
+# PVC for model storage (optional - using emptyDir as primary)
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: vllm-models
+  labels:
+    app: vllm-server
+    component: storage
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 20Gi
+
+---
+# PVC for Hugging Face cache (optional - using emptyDir as primary)
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: vllm-huggingface
+  labels:
+    app: vllm-server
+    component: storage
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 10Gi
+
+---
+# Main DeploymentConfig for vLLM Server
+apiVersion: apps.openshift.io/v1
+kind: DeploymentConfig
+metadata:
+  name: vllm-server
+  labels:
+    app: vllm-server
+    component: deployment
+spec:
+  replicas: 1
+  selector:
+    app: vllm-server
+  strategy:
+    type: Recreate
+    recreateParams:
+      timeoutSeconds: 1800  # 30 minutes for model download and loading
+  template:
+    metadata:
+      labels:
+        app: vllm-server
+    spec:
+      serviceAccountName: vllm-sa
+      # Force onto A100 GPU node for sufficient memory
+      nodeSelector:
+        nvidia.com/gpu.product: NVIDIA-A100-80GB-PCIe
+      # OpenShift-compliant security context
+      securityContext:
+        runAsUser: 1000800000
+        fsGroup: 1000800000
+        fsGroupChangePolicy: "OnRootMismatch"
+      containers:
+      - name: vllm-server
+        image: image-registry.openshift-image-registry.svc:5000/demo1/vllm-server:latest
+        env:
+        # Hugging Face token for model download
+        - name: HF_TOKEN
+          valueFrom:
+            secretKeyRef:
+              name: bridgy-secrets
+              key: hf-token
+              optional: true
+        # Cache directories (writable locations)
+        - name: HF_HOME
+          value: "/tmp/huggingface_home"  
+        - name: TRANSFORMERS_CACHE
+          value: "/tmp/huggingface_cache"
+        - name: TRITON_CACHE_DIR
+          value: "/tmp/triton_cache"
+        - name: XDG_CACHE_HOME
+          value: "/tmp/xdg_cache"
+        - name: XDG_CONFIG_HOME
+          value: "/tmp/xdg_config"
+        # vLLM configuration
+        - name: TENSOR_PARALLEL_SIZE
+          value: "1"
+        ports:
+        - containerPort: 8000
+          protocol: TCP
+          name: http
+        resources:
+          limits:
+            cpu: "4"
+            memory: "16Gi"
+            nvidia.com/gpu: 1
+          requests:
+            cpu: "2"
+            memory: "8Gi"
+            nvidia.com/gpu: 1
+        volumeMounts:
+        # Primary model storage using emptyDir (writable, avoids permission issues)
+        - mountPath: "/tmp/models"
+          name: vllm-tmp-models
+        # Optional PVC mounts for persistence (if needed in future)
+        - mountPath: "/data/models"
+          name: vllm-models
+        - mountPath: "/data/huggingface"
+          name: vllm-huggingface
+        # Health checks
+        readinessProbe:
+          httpGet:
+            path: /v1/models
+            port: 8000
+          initialDelaySeconds: 180  # Allow time for model download
+          periodSeconds: 20
+          timeoutSeconds: 10
+          failureThreshold: 6
+        livenessProbe:
+          httpGet:
+            path: /v1/models
+            port: 8000
+          initialDelaySeconds: 300  # Allow time for full startup
+          periodSeconds: 30
+          timeoutSeconds: 10
+          failureThreshold: 6
+        startupProbe:
+          httpGet:
+            path: /v1/models
+            port: 8000
+          periodSeconds: 30
+          timeoutSeconds: 10
+          failureThreshold: 30  # 15 minutes total startup time
+      volumes:
+      # Primary model storage using emptyDir (fast, writable, no permission issues)
+      - name: vllm-tmp-models
+        emptyDir:
+          sizeLimit: "30Gi"
+      # Optional PVC volumes for persistence
+      - name: vllm-models
+        persistentVolumeClaim:
+          claimName: vllm-models
+      - name: vllm-huggingface
+        persistentVolumeClaim:
+          claimName: vllm-huggingface
+  triggers:
+  - type: ConfigChange
+  - type: ImageChange
+    imageChangeParams:
+      automatic: true
+      containerNames:
+      - vllm-server
+      from:
+        kind: ImageStreamTag
+        name: vllm-server:latest
+        namespace: demo1
+
+---
+# Service to expose vLLM server
+apiVersion: v1
+kind: Service
+metadata:
+  name: vllm-server
+  labels:
+    app: vllm-server
+    component: service
+spec:
+  ports:
+  - port: 8000
+    targetPort: 8000
+    protocol: TCP
+    name: http
+  selector:
+    app: vllm-server
+  type: ClusterIP
+
+---
+# Route to expose service externally (optional)
+apiVersion: route.openshift.io/v1
+kind: Route
+metadata:
+  name: vllm-server
+  labels:
+    app: vllm-server
+    component: route
+spec:
+  to:
+    kind: Service
+    name: vllm-server
+  port:
+    targetPort: http
+  tls:
+    termination: edge
+    insecureEdgeTerminationPolicy: Redirect

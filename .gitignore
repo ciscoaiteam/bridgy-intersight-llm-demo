@@ -1,10 +1,35 @@
+# Consolidated .gitignore for Bridgy AI Assistant project
+
+# Python-generated files
+__pycache__/
+*.py[oc]
+build/
+wheels/
+*.egg-info
+
 # Virtual environments
 ./venv
 venv/
-# Local Environments
+.venv
+
+# Local environment files
 .env
-# Zip file of the old version
+
+# Archive files
 *.zip
-# Config Files
-config/intersight.pem
-config/ollama/*
+
+# Credentials and configuration files
+intersight.pem
+cert.pem
+key.pem
+osdeploy/bridgy-main-env-configmap.yaml
+osdeploy/bridgy-secrets.yaml
+*.pem
+
+# Logs
+logs/
+*.log
+
+# OS-specific files
+.DS_Store
+Thumbs.db

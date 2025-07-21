@@ -1,0 +1,15 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: bridgy-main-nodeport
+  labels:
+    app: bridgy-main
+spec:
+  type: NodePort
+  ports:
+  - name: "bridgy-main"
+    port: 8443
+    targetPort: 8443
+    nodePort: 30843  # Using a standard NodePort range (30000-32767)
+  selector:
+    deploymentconfig: bridgy-main

@@ -1,0 +1,22 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: bridgy-ssl-cert
+  labels:
+    app: bridgy-main
+data:
+  cert.pem: |
+    # This ConfigMap will be replaced by the actual certificate content
+    # by the deploy script
+
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: bridgy-ssl-key
+  labels:
+    app: bridgy-main
+data:
+  key.pem: |
+    # This ConfigMap will be replaced by the actual key content
+    # by the deploy script

@@ -1,0 +1,66 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  labels:
+    app: mongodb
+  name: mongodb
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: mongodb
+  strategy:
+    type: Recreate
+  template:
+    metadata:
+      labels:
+        app: mongodb
+    spec:
+      serviceAccountName: mongodb
+      securityContext:
+        fsGroup: 26
+        runAsUser: 1000070000
+        runAsGroup: 0
+      containers:
+      - name: mongodb
+        image: mongo:4.4
+        ports:
+        - containerPort: 27017
+        command: ["mongod", "--config", "/etc/mongo/mongod.conf"]
+        env:
+        - name: MONGO_INITDB_DATABASE
+          value: "bridgy_db"
+        resources:
+          limits:
+            memory: 512Mi
+            cpu: 300m
+          requests:
+            memory: 256Mi
+            cpu: 100m
+        volumeMounts:
+        - name: mongodb-config
+          mountPath: /etc/mongo
+        - name: mongodb-data
+          mountPath: /data/db
+        - name: mongodb-log
+          mountPath: /var/log/mongodb
+        - name: mongodb-config-init
+          mountPath: /docker-entrypoint-initdb.d/
+          readOnly: false
+      volumes:
+      - name: mongodb-data
+        emptyDir: {}
+      - name: mongodb-log
+        emptyDir: {}
+      - name: mongodb-config
+        configMap:
+          name: mongodb-config
+          items:
+          - key: mongod.conf
+            path: mongod.conf
+      - name: mongodb-config-init
+        configMap:
+          name: mongodb-config
+          items:
+          - key: init-mongo.js
+            path: init-mongo.js
